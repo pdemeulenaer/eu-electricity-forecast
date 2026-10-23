@@ -46,10 +46,11 @@ Silver tables:
 | silver_forecasts | Zone, forecast vintage, delivery interval |
 | silver_cross_border_flows | Directed border, interval, revision |
 
-Silver retains source lineage and revisions. Each table has a `_current` view that
-selects the latest revision per source record. Invalid or unmapped rows go to
-`silver_quarantine`; missing flow values remain missing. The initial job re-reads
-Bronze and uses insert-only Delta merges, so retries are idempotent.
+Silver keeps corrected versions of observations in its tables. A `_current` view
+shows the latest correction for each observation without storing another copy. For
+example, if a price is corrected from 75 to 72 EUR/MWh, the table keeps both values
+and the view shows 72. Invalid or unmapped rows go to `silver_quarantine`; missing
+flow values remain missing.
 
 Planned Gold tables:
 

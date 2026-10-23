@@ -62,9 +62,12 @@ source revisions with idempotent merges, and exposes `_current` views. Deploy an
 verify the tables in the project catalog.
 
 ### 5. Features
-Create reproducible snapshots keyed by issue time, zone, and delivery interval.
-Add lags, net load, time encodings, data age, and eligible neighbor signals. Enforce
-availability cutoffs and test batch/incremental parity and leakage.
+Create one wide `gold.day_ahead_features` snapshot keyed by issue time, zone,
+delivery interval, and target auction. Start with calendar, eligible lagged price,
+load/generation, and historical flow features. Add future weather fields under a
+`weather_*` prefix after a source is selected; use a separate family table only if
+it needs independent vintage handling. Enforce issue-time availability cutoffs and
+test leakage before model training.
 
 ### 6. Train
 Compare seasonal-naive baselines with one global LightGBM model using chronological

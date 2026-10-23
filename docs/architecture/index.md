@@ -56,14 +56,27 @@ Planned Gold tables:
 
 | Table | Row grain | Use |
 | --- | --- | --- |
-| day_ahead_features | Issue time, zone, target interval | Training and inference inputs |
+| day_ahead_features | Issue time, zone, target interval, target auction | Point-in-time training and inference inputs |
 | price_predictions | Issue time, zone, target interval, model version | Forecast consumers |
 | forecast_evaluation | Prediction identity and matured label | MAE/RMSE and label tracking |
 | monitoring_metrics | Metric window and zone/model slice | Drift and retraining decisions |
 
-Feature rows include predictors, issue cutoff, source availability/vintage, and a
-stable snapshot key. Unity Catalog Feature Engineering can use a Delta table with
-a primary key as a feature table.
+`day_ahead_features` is the model-ready snapshot: one wide row for each forecast
+issue, zone, delivery interval, and target auction. Use a composite key from those
+columns, plus `feature_set_version` and source-vintage timestamps. Group columns by
+prefix (`calendar_*`, `price_*`, `load_*`, `generation_*`, `flow_*`); future inputs
+can use `weather_*` and other source-specific prefixes. Keep labels out of this
+table.
+
+Only use source values known by the issue cutoff. In particular, a forecast for a
+delivery interval is not automatically available before that interval. Historical
+backfill time is download time, not proof of when a source value first became
+available. Add new sources through Landing/Bronze/Silver, then join eligible values
+into the same Gold snapshot. If a feature family needs independent refresh or
+vintage history, it can have its own Gold table with the same keys before assembly.
+Avoid a generic feature-name/value table; typed columns are easier to validate and
+use for model training. A Unity Catalog Delta table with a primary key can later be
+registered for Feature Engineering; point-in-time lookups require time-series keys.
 
 ## Unity Catalog layout
 

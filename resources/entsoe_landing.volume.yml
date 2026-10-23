@@ -1,0 +1,13 @@
+resources:
+  volumes:
+    entsoe_landing:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      name: entsoe_landing
+      volume_type: MANAGED
+
+    entsoe_landing_project:
+      catalog_name: ${resources.catalogs.electricity_forecast.name}
+      schema_name: ${resources.schemas.landing.name}
+      name: entsoe_landing
+      volume_type: MANAGED

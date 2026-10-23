@@ -1,0 +1,80 @@
+site_name: EU Electricity Forecast
+site_description: ENTSO-E electricity price forecasting pipeline on Databricks
+site_author: Philippe de Meulenaer
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  language: en
+  font:
+    text: Roboto
+    code: Roboto Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            members_order: source
+            show_if_no_docstring: false
+            show_root_heading: true
+            show_signature_annotations: true
+            separate_signature: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - getting-started/index.md
+      - ENTSO-E ingestion: entsoe-ingestion.md
+  - Architecture:
+      - architecture/index.md
+  - Operations:
+      - operations/index.md
+      - Implementation plan: implementation-plan.md
+  - Code reference:
+      - reference/index.md
+      - API client: reference/entsoe.md
+      - Ingestion: reference/ingest.md
+      - Bronze: reference/bronze.md
+      - Silver: reference/silver.md
+      - Coverage survey: reference/coverage.md

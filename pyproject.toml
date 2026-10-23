@@ -4,6 +4,7 @@ version = "0.0.1"
 authors = [{ name = "pdemeulenaer@gmail.com" }]
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "requests>=2.32,<3",
     # Any dependencies for jobs and pipelines in this project can be added here
     # See also https://docs.databricks.com/dev-tools/bundles/library-dependencies
     #
@@ -19,9 +20,18 @@ dev = [
     "databricks-connect>=16.4,<16.5",
     "ipykernel",
 ]
+docs = [
+    "mkdocs-material>=9.6,<10",
+    "mkdocstrings[python]>=0.30,<1",
+    "pymdown-extensions>=10,<12",
+]
 
 [project.scripts]
 main = "eu_electricity_forecast.main:main"
+entsoe-ingest = "eu_electricity_forecast.ingest:main"
+entsoe-survey = "eu_electricity_forecast.coverage:main"
+entsoe-autoload = "eu_electricity_forecast.bronze:main"
+entsoe-silver = "eu_electricity_forecast.silver:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -29,3 +39,6 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 120
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/eu_electricity_forecast"]

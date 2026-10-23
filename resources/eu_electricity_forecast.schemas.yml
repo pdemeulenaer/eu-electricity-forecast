@@ -1,0 +1,18 @@
+resources:
+  schemas:
+    landing:
+      name: ${var.landing_schema}
+      catalog_name: ${resources.catalogs.electricity_forecast.name}
+      comment: Immutable ENTSO-E source files and Auto Loader state
+    bronze:
+      name: ${var.bronze_schema}
+      catalog_name: ${resources.catalogs.electricity_forecast.name}
+      comment: Append-only source-shaped ENTSO-E observations
+    silver:
+      name: silver
+      catalog_name: ${resources.catalogs.electricity_forecast.name}
+      comment: Validated and typed electricity market observations
+    gold:
+      name: gold
+      catalog_name: ${resources.catalogs.electricity_forecast.name}
+      comment: Curated features, forecasts, evaluation, and monitoring outputs

@@ -1,0 +1,33 @@
+resources:
+  jobs:
+    entsoe_historical_backfill:
+      name: eu-electricity-forecast-entsoe-historical-backfill
+      tags:
+        aidevkit_project: ai-dev-kit
+      performance_target: STANDARD
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: backfill_entsoe
+          python_wheel_task:
+            package_name: eu_electricity_forecast
+            entry_point: entsoe-ingest
+            parameters:
+              - --mode
+              - backfill
+              - --start
+              - ${var.entsoe_backfill_start}
+              - --landing-dir
+              - /Volumes/${var.project_catalog}/${var.landing_schema}/entsoe_landing
+              - --secret-scope
+              - ${var.entsoe_secret_scope}
+              - --secret-key
+              - ${var.entsoe_secret_key}
+          environment_key: default
+          max_retries: 2
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "6"
+            dependencies:
+              - requests==2.34.2
+              - ../dist/*.whl

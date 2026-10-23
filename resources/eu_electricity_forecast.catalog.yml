@@ -1,0 +1,5 @@
+resources:
+  catalogs:
+    electricity_forecast:
+      name: ${var.project_catalog}
+      comment: Catalog for the EU electricity forecasting project

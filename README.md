@@ -9,6 +9,9 @@ proposed ingestion, streaming features, global model, monitoring, and automated
 retraining workflow. The first modeling decision is the price product and forecast
 cutoff: day-ahead prices are generally already known one hour before delivery.
 
+The ENTSO-E survey and ingestion commands, setup notes, and token configuration
+are documented in [docs/entsoe-ingestion.md](docs/entsoe-ingestion.md).
+
 * `src/`: Python source code for this project.
   * `src/eu_electricity_forecast/`: Shared Python code that can be used by jobs and pipelines.
 * `resources/`:  Resource configurations (jobs, pipelines, etc.)
@@ -75,3 +78,15 @@ with this project. It's also possible to interact with it directly using the CLI
    ```
    $ uv run pytest
    ```
+
+## Documentation
+
+The MkDocs site contains the project overview, architecture, ENTSO-E ingestion
+guide, implementation roadmap, and generated Python API reference.
+
+~~~sh
+make docs
+make docs-build
+~~~
+
+See [docs/index.md](docs/index.md) for the documentation home page.

@@ -1,0 +1,107 @@
+{
+  "api_endpoint": "https://web-api.tp.entsoe.eu/api",
+  "requests_per_minute": 30,
+  "history_start_date": "2024-10-01",
+  "forecast": {
+    "product": "day_ahead",
+    "issue_timezone": "Europe/Brussels",
+    "issue_time_local": "10:00",
+    "issue_time_status": "Provisional; verify input vintages per zone before production use",
+    "resolutions_minutes": [
+      15,
+      30,
+      60
+    ],
+    "resolution_change_date": "2025-10-01",
+    "expected_resolution_minutes_before_change": 60,
+    "expected_resolution_minutes_after_change": 15
+  },
+  "zones": {
+    "DE_LU": {
+      "eic_code": "10Y1001A1001A82H",
+      "timezone": "Europe/Berlin"
+    },
+    "FR": {
+      "eic_code": "10YFR-RTE------C",
+      "timezone": "Europe/Paris"
+    },
+    "NL": {
+      "eic_code": "10YNL----------L",
+      "timezone": "Europe/Amsterdam"
+    },
+    "LT": {
+      "eic_code": "10YLT-1001A0008Q",
+      "timezone": "Europe/Vilnius"
+    }
+  },
+  "data_items": {
+    "day_ahead_prices": {
+      "documentType": "A44",
+      "domain_parameter": "in_Domain",
+      "same_domain_parameters": [
+        "out_Domain"
+      ],
+      "unit": "EUR/MWh",
+      "description": "Energy Prices, Transparency Regulation 12.1.D",
+      "publication_expectation": "Published within one hour after day-ahead gate closure; updates are possible."
+    },
+    "actual_load": {
+      "documentType": "A65",
+      "processType": "A16",
+      "domain_parameter": "outBiddingZone_Domain",
+      "unit": "MW",
+      "description": "Actual Total Load 6.1.A",
+      "publication_expectation": "Measure document-created and first-observed lag during polling."
+    },
+    "day_ahead_load_forecast": {
+      "documentType": "A65",
+      "processType": "A01",
+      "domain_parameter": "outBiddingZone_Domain",
+      "unit": "MW",
+      "description": "Day-ahead Total Load Forecast 6.1.B",
+      "publication_expectation": "Verify each area's forecast vintage is available at the configured issue time."
+    },
+    "actual_generation_per_type": {
+      "documentType": "A75",
+      "processType": "A16",
+      "domain_parameter": "in_Domain",
+      "unit": "MW",
+      "description": "Aggregated Generation per Type 16.1.B/C",
+      "publication_expectation": "Measure history, production-type coverage, and publication lag per area."
+    },
+    "physical_flows": {
+      "documentType": "A11",
+      "domain_parameter": "in_Domain",
+      "out_domain_parameter": "out_Domain",
+      "unit": "MW",
+      "description": "Physical Flows 12.1.G",
+      "publication_expectation": "Query each border direction separately and measure its publication lag."
+    },
+    "day_ahead_generation": {
+      "documentType": "A71",
+      "processType": "A01",
+      "domain_parameter": "in_Domain",
+      "unit": "MW",
+      "description": "Day-ahead Aggregated Generation, 14.1.C",
+      "publication_expectation": "ENTSO-E guidance specifies publication no later than 18:00 Brussels time on D-1; this is later than the provisional 10:00 day-ahead price issue time."
+    },
+    "day_ahead_wind_solar_forecast": {
+      "documentType": "A69",
+      "processType": "A01",
+      "domain_parameter": "in_Domain",
+      "unit": "MW",
+      "description": "Day-ahead Wind and Solar Forecast, 14.1.D",
+      "publication_expectation": "Day-ahead values are due by 18:00 Brussels time on D-1; later updates exist. Not available at the provisional 10:00 issue time for D-1."
+    }
+  },
+  "physical_flow_borders": [
+    [
+      "DE_LU",
+      "FR"
+    ],
+    [
+      "DE_LU",
+      "NL"
+    ]
+  ]
+}

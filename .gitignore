@@ -8,3 +8,13 @@ scratch/**
 !scratch/README.md
 **/explorations/**
 **/!explorations/README.md
+
+# Local credentials
+.env
+.env.*
+!.env.sample
+
+# Local ENTSO-E landing files and generated coverage reports
+data/entsoe_landing/
+reports/
+site/

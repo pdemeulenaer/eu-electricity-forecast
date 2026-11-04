@@ -74,9 +74,28 @@ job rebuilds these Gold objects after Silver normalization; keep the label out o
 the predictor columns.
 
 ### 6. Train
-Compare seasonal-naive baselines with one global LightGBM model using chronological
-validation. Report MAE/RMSE overall and by zone, horizon, season, and price regime.
-Log data, feature, code, and model versions to MLflow; register accepted models in UC.
+Start with an offline experiment after the latest bundle is deployed and the
+ingestion job has rebuilt Gold. First check `day_ahead_training_data` row counts,
+date coverage, duplicates, missing labels, and coverage by zone, resolution, and
+auction series. Choose one DE_LU auction series for the first run; do not combine
+series with different price definitions. Confirm that the selected target and
+cutoff are consistent across zones.
+
+Use explicit predictors (calendar fields, bidding zone, and only eligible price
+lags); exclude labels, target values, revision metadata, and fields unavailable at
+the issue cutoff. Historical backfill timestamps make the 24-hour and 168-hour
+lags unavailable for earlier examples, so quantify lag coverage first. If sparse,
+run the first model as a calendar-and-zone baseline and treat it as a pipeline
+smoke test; do not present it as a validated forecasting result.
+
+Compare a seasonal-naive baseline with one global LightGBM regressor. Split by
+delivery time, with shared chronological train, validation, and test windows across
+zones; never randomly split rows. Report MAE/RMSE overall and by zone, auction,
+resolution, month, and high/negative-price regime. Log the data window and Delta
+versions, feature set, split dates, code revision, parameters, and metrics to
+MLflow. Keep the first model as an experiment; register it in Unity Catalog only
+after the held-out results and target definition are accepted. Then package the
+experiment as a repeatable Databricks training job.
 
 ### 7. Score and evaluate
 Write immutable predictions linked to the model and feature snapshot. Join labels

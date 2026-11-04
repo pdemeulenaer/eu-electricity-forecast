@@ -1,9 +1,20 @@
 # Gold features
 
-The hourly ingestion job rebuilds `eu_electricity_forecast.gold.day_ahead_features`
-after Silver normalization. Each row describes inputs for one issue time, zone,
-delivery interval, and auction series. The target price is not copied into this
-table.
+The hourly ingestion job rebuilds the Gold features and labels after Silver
+normalization. Each feature row describes inputs for one issue time, zone,
+delivery interval, and auction series. Its target price is kept separately.
+
+| Table | Contents |
+| --- | --- |
+| `day_ahead_features` | Point-in-time inputs; target price excluded. |
+| `day_ahead_price_labels` | Latest known price and revision per zone, interval, and auction series. |
+| `day_ahead_training_data` | View joining features to their labels at that target grain. |
+
+Labels are rebuilt from `silver_prices_current`. When a newly ingested revision
+becomes current, the label value changes on the next Gold run. Feature lags still
+obey the issue-time availability rule below: later corrections cannot be treated
+as if they were known at earlier forecast cutoffs. The label is an outcome, never
+a predictor.
 
 | Feature family | Columns | Definition |
 | --- | --- | --- |
@@ -27,8 +38,14 @@ an explicit delivery schedule and target-auction configuration.
 `target_*` columns identify the delivery interval and auction series; they do not
 contain the price label and are metadata for joins, not automatic predictor inputs.
 `feature_set_version` identifies the definitions, and
-`feature_row_key` is a stable hash of the row grain. The job overwrites the table from
-Silver on each run, so reruns are deterministic for unchanged source data.
+`feature_row_key` is a stable hash of the row grain. The job rebuilds these Gold
+outputs from Silver on each run, so reruns are deterministic for unchanged source
+data. Historical corrections are reflected only after the source is fetched again.
+
+`day_ahead_training_data` joins by zone, target interval, resolution, and auction
+series. Select model predictors explicitly and use `label_price_eur_mwh` as the
+target; do not use label revision or observation metadata as predictors. Labels
+are latest-known prices, not certified final settlements.
 
 Weather, load, generation, and flow features are intentionally not included yet.
 They can be added as typed `weather_*`, `load_*`, `generation_*`, or `flow_*`

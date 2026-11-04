@@ -108,12 +108,17 @@ def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: s
     issue_timezone = forecast["issue_timezone"]
     issue_time = forecast["issue_time_local"]
     source_table = f"{catalog}.{silver_schema}.silver_prices"
+    current_table = f"{catalog}.{silver_schema}.silver_prices_current"
     target_table = f"{catalog}.{gold_schema}.day_ahead_features"
     zones = config["zones"]
     timezone_map = create_map(*chain.from_iterable((lit(zone), lit(spec["timezone"])) for zone, spec in zones.items()))
 
     prices = spark.table(source_table).where((col("data_item") == "day_ahead_prices") & (col("unit") == "EUR/MWh"))
     prices = prices.withColumn("auction_series_key", _series_key())
+    current_prices = spark.table(current_table).where(
+        (col("data_item") == "day_ahead_prices") & (col("unit") == "EUR/MWh")
+    )
+    current_prices = current_prices.withColumn("auction_series_key", _series_key())
     # Read the version table (not its _current view) so each lag uses only revisions
     # that had actually arrived by the forecast issue time. Target rows define the
     # retrospective examples, not feature values.
@@ -125,7 +130,7 @@ def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: s
         )
     )
     targets = (
-        prices.dropDuplicates(["source_record_key"])
+        current_prices
         .withColumn("_zone_timezone", element_at(timezone_map, col("bidding_zone")))
         .withColumn("_local_delivery", from_utc_timestamp(col("timestamp_utc"), col("_zone_timezone")))
         .withColumn(
@@ -236,6 +241,70 @@ def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: s
     )
 
 
+def build_day_ahead_price_labels(*, catalog: str, silver_schema: str, gold_schema: str) -> None:
+    """Rebuild one latest-known label per zone, delivery interval, and auction series."""
+    from pyspark.sql import SparkSession
+    from pyspark.sql.functions import col
+
+    spark = SparkSession.builder.getOrCreate()
+    source = f"{catalog}.{silver_schema}.silver_prices_current"
+    target = f"{catalog}.{gold_schema}.day_ahead_price_labels"
+    current_prices = spark.table(source).where(
+        (col("data_item") == "day_ahead_prices") & (col("unit") == "EUR/MWh")
+    )
+    labels = (
+        current_prices.withColumn("target_auction_series_key", _series_key())
+        .select(
+            "bidding_zone",
+            col("timestamp_utc").alias("target_interval_start_utc"),
+            col("interval_end_utc").alias("target_interval_end_utc"),
+            col("resolution_minutes").alias("target_resolution_minutes"),
+            "target_auction_series_key",
+            col("value").cast("double").alias("label_price_eur_mwh"),
+            col("source_revision").alias("label_source_revision"),
+            col("published_at_utc").alias("label_published_at_utc"),
+            col("first_seen_at_utc").alias("label_first_seen_at_utc"),
+            col("source_record_key").alias("label_source_record_key"),
+            col("source_record_version_key").alias("label_source_record_version_key"),
+        )
+    )
+    labels.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(target)
+    spark.sql(
+        f"COMMENT ON TABLE {target} IS "
+        "'Latest known ENTSO-E day-ahead price labels by zone, interval, and auction series.'"
+    )
+    print(json.dumps({"table": target, "status": "rebuilt"}, sort_keys=True))
+
+
+def build_day_ahead_training_view(*, catalog: str, gold_schema: str) -> None:
+    """Join point-in-time features to their latest known target price labels."""
+    from pyspark.sql import SparkSession
+
+    spark = SparkSession.builder.getOrCreate()
+    features = f"{catalog}.{gold_schema}.day_ahead_features"
+    labels = f"{catalog}.{gold_schema}.day_ahead_price_labels"
+    view = f"{catalog}.{gold_schema}.day_ahead_training_data"
+    spark.sql(
+        f"""
+        CREATE OR REPLACE VIEW {view} AS
+        SELECT
+          f.*,
+          l.label_price_eur_mwh,
+          l.label_source_revision,
+          l.label_published_at_utc,
+          l.label_first_seen_at_utc,
+          l.label_source_record_version_key
+        FROM {features} f
+        INNER JOIN {labels} l
+          ON f.bidding_zone = l.bidding_zone
+         AND f.target_interval_start_utc = l.target_interval_start_utc
+         AND f.target_resolution_minutes = l.target_resolution_minutes
+         AND f.target_auction_series_key = l.target_auction_series_key
+        """
+    )
+    print(json.dumps({"view": view, "status": "refreshed"}, sort_keys=True))
+
+
 def main() -> None:
     from eu_electricity_forecast.entsoe import load_config
 
@@ -250,6 +319,8 @@ def main() -> None:
         gold_schema=args.gold_schema,
         config=load_config(),
     )
+    build_day_ahead_price_labels(catalog=args.catalog, silver_schema=args.silver_schema, gold_schema=args.gold_schema)
+    build_day_ahead_training_view(catalog=args.catalog, gold_schema=args.gold_schema)
 
 
 if __name__ == "__main__":

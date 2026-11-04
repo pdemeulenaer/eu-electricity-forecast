@@ -57,6 +57,8 @@ Gold tables:
 | Table | Row grain | Use |
 | --- | --- | --- |
 | day_ahead_features | Issue time, zone, target interval, target auction | Point-in-time training rows; future inference rows to follow |
+| day_ahead_price_labels | Zone, target interval, target auction | Latest known target price and revision metadata |
+| day_ahead_training_data | Feature row joined to its target label | Training view; label excluded from predictor columns |
 | price_predictions | Issue time, zone, target interval, model version | Forecast consumers |
 | forecast_evaluation | Prediction identity and matured label | MAE/RMSE and label tracking |
 | monitoring_metrics | Metric window and zone/model slice | Drift and retraining decisions |
@@ -74,8 +76,9 @@ delivery interval, and auction series. It contains the following versioned input
 | `target_*` | Target interval and auction identifiers used to keep rows distinct; no target price value is included. |
 
 The configured issue time is 10:00 on the prior local delivery date, in
-`Europe/Brussels`; it remains provisional. The builder reads Silver's revision table,
-not its `_current` view, so a later correction cannot appear in an earlier snapshot.
+`Europe/Brussels`; it remains provisional. Target rows come from Silver's `_current`
+view. Lag features read Silver's revision table, so a later correction cannot appear
+in an earlier snapshot.
 Price lags qualify only when their `first_seen_at_utc` is at or before that cutoff.
 ENTSO-E backfill timestamps reflect download time, so historical backfill values
 will not pass old cutoffs, so those historical lag values remain null. Calendar
@@ -88,9 +91,11 @@ that needs an explicit interval schedule and target-auction configuration.
 
 Add future inputs as typed, prefixed columns such as `weather_*`, `load_*`, or
 `generation_*` only after their vintages can be shown to arrive before issue time.
-Keep the target label out of this table. `target_*` fields identify the target for
-joining and grouping; treat them as metadata, not predictor inputs, unless they are
-independently known at issue time. New source data still flows through
+Keep the target label out of the feature table. `target_*` fields identify the target
+for joining and grouping; treat them as metadata, not predictor inputs, unless they
+are independently known at issue time. The training view joins features to the
+latest known label by zone, target interval, resolution, and auction series. New
+source data still flows through
 Landing/Bronze/Silver before it is joined into Gold. A Unity Catalog Delta table can
 later be registered for Feature Engineering; the row key and issue time support
 point-in-time training lookups.
@@ -100,8 +105,8 @@ point-in-time training lookups.
 Use catalog `eu_electricity_forecast` with four schemas: `landing`, `bronze`,
 `silver`, and `gold`. The managed volume `landing.entsoe_landing` holds immutable
 source files and Auto Loader state; Bronze observations go to
-`bronze.bronze_entsoe_observations`. The Silver tables and
-`gold.day_ahead_features` use their matching schemas.
+`bronze.bronze_entsoe_observations`. The Silver tables and Gold feature, label, and
+training-view objects use their matching schemas.
 
 The first successful run wrote to the existing `workspace.pdemeulenaer` location.
 The bundle will create the new catalog layout and direct subsequent ingestion there;

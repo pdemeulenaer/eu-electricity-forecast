@@ -67,8 +67,11 @@ delivery interval, and auction series. The first version adds local-calendar
 encodings and same-series 24-hour and 168-hour price lags. Lags require a source
 `first_seen_at_utc` no later than issue time; backfilled observations therefore
 remain unavailable for historical cutoffs. Add weather, load, or generation fields
-only after their issue-time availability is established. The ingestion job rebuilds
-the table after Silver normalization.
+only after their issue-time availability is established. Also build
+`gold.day_ahead_price_labels` from the latest Silver price revisions and expose
+`gold.day_ahead_training_data` as a join of feature rows to labels. The ingestion
+job rebuilds these Gold objects after Silver normalization; keep the label out of
+the predictor columns.
 
 ### 6. Train
 Compare seasonal-naive baselines with one global LightGBM model using chronological

@@ -32,6 +32,7 @@ entsoe-ingest = "eu_electricity_forecast.ingest:main"
 entsoe-survey = "eu_electricity_forecast.coverage:main"
 entsoe-autoload = "eu_electricity_forecast.bronze:main"
 entsoe-silver = "eu_electricity_forecast.silver:main"
+entsoe-gold-features = "eu_electricity_forecast.gold:main"
 
 [build-system]
 requires = ["hatchling"]

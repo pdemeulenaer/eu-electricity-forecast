@@ -36,7 +36,8 @@ flowchart TB
 | Coverage survey for DE_LU, FR, NL, LT | Completed; target auction and publication delays need follow-up |
 | Poller, backfill, immutable landing | Implemented locally |
 | Scheduled poll, Bronze, Silver | Implemented locally; project-catalog deployment pending |
-| Gold features, model, monitoring, retraining | Planned |
+| Gold feature snapshot | Implemented locally; deploy and verify in Databricks |
+| Model, monitoring, retraining | Planned |
 
 The MVP predicts next-day auction prices before publication. Historical replay will
 demonstrate streaming behavior. See [architecture](architecture/index.md),

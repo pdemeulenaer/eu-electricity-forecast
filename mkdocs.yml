@@ -77,4 +77,5 @@ nav:
       - Ingestion: reference/ingest.md
       - Bronze: reference/bronze.md
       - Silver: reference/silver.md
+      - Gold features: reference/gold.md
       - Coverage survey: reference/coverage.md

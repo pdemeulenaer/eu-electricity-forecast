@@ -60,6 +60,21 @@ resources:
               - ${var.silver_schema}
           environment_key: default
           max_retries: 2
+        - task_key: gold_day_ahead_features
+          depends_on:
+            - task_key: silver_normalize
+          python_wheel_task:
+            package_name: eu_electricity_forecast
+            entry_point: entsoe-gold-features
+            parameters:
+              - --catalog
+              - ${var.project_catalog}
+              - --silver-schema
+              - ${var.silver_schema}
+              - --gold-schema
+              - ${var.gold_schema}
+          environment_key: default
+          max_retries: 2
       environments:
         - environment_key: default
           spec:

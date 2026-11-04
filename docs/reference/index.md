@@ -6,6 +6,7 @@ Generated API documentation for the shared ENTSO-E modules:
 - [Backfill and polling](ingest.md)
 - [Bronze Auto Loader](bronze.md)
 - [Silver normalization](silver.md)
+- [Gold features](gold.md)
 - [Coverage survey](coverage.md)
 
 For usage examples, see the [ingestion guide](../entsoe-ingestion.md).

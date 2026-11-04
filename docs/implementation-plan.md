@@ -24,7 +24,7 @@ and controlled retraining. Detailed layer responsibilities are in the
 | 2 | Survey source coverage and define target | Survey run; auction choice and first-seen delays remain |
 | 3 | Shared client, backfill, polling, immutable files | Implemented locally |
 | 4 | Bronze ingestion and Silver normalization | Implemented locally; deployment to project catalog pending |
-| 5 | Point-in-time features and leakage checks | Planned |
+| 5 | Point-in-time features and leakage checks | Implemented locally; deployment and data checks pending |
 | 6 | Baselines, global model, MLflow registration | Planned |
 | 7 | Scoring and delayed-label reconciliation | Planned |
 | 8 | Drift and quality monitoring | Planned |
@@ -63,11 +63,12 @@ verify the tables in the project catalog.
 
 ### 5. Features
 Create one wide `gold.day_ahead_features` snapshot keyed by issue time, zone,
-delivery interval, and target auction. Start with calendar, eligible lagged price,
-load/generation, and historical flow features. Add future weather fields under a
-`weather_*` prefix after a source is selected; use a separate family table only if
-it needs independent vintage handling. Enforce issue-time availability cutoffs and
-test leakage before model training.
+delivery interval, and auction series. The first version adds local-calendar
+encodings and same-series 24-hour and 168-hour price lags. Lags require a source
+`first_seen_at_utc` no later than issue time; backfilled observations therefore
+remain unavailable for historical cutoffs. Add weather, load, or generation fields
+only after their issue-time availability is established. The ingestion job rebuilds
+the table after Silver normalization.
 
 ### 6. Train
 Compare seasonal-naive baselines with one global LightGBM model using chronological

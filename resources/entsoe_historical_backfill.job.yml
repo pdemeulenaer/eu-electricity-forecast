@@ -6,6 +6,11 @@ resources:
         aidevkit_project: ai-dev-kit
       performance_target: STANDARD
       max_concurrent_runs: 1
+      parameters:
+        - name: entsoe_backfill_start
+          default: "2024-10-01T00:00:00Z"
+        - name: entsoe_backfill_end
+          default: ""
       tasks:
         - task_key: backfill_entsoe
           python_wheel_task:
@@ -15,7 +20,9 @@ resources:
               - --mode
               - backfill
               - --start
-              - ${var.entsoe_backfill_start}
+              - "{{job.parameters.entsoe_backfill_start}}"
+              - --end
+              - "{{job.parameters.entsoe_backfill_end}}"
               - --landing-dir
               - /Volumes/${var.project_catalog}/${var.landing_schema}/entsoe_landing
               - --secret-scope

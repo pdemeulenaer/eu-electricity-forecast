@@ -29,9 +29,6 @@ variables:
     description: Schema for typed ENTSO-E observations
   gold_schema:
     description: Schema for day-ahead features and downstream model outputs
-  entsoe_backfill_start:
-    description: Inclusive UTC start for the historical ENTSO-E backfill
-    default: "2024-10-01T00:00:00Z"
   entsoe_secret_scope:
     description: Databricks secret scope containing the ENTSO-E token
   entsoe_secret_key:

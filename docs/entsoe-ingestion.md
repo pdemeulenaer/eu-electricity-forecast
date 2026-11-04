@@ -47,11 +47,21 @@ The poll command requests the latest six hours. It retries transient failures,
 paces requests, and rechecks overlap for revisions. Completed backfill windows
 are skipped on rerun; use --requery-completed to check them again.
 
-The bundle defines a manual `entsoe_historical_backfill` job. After deployment,
-run it with `databricks bundle run entsoe_historical_backfill -t dev`. It starts at
-`entsoe_backfill_start` (default `2024-10-01T00:00:00Z`) and runs through the
-current time. The hourly job then processes landed files through Bronze and Silver.
-Completed query windows are skipped on rerun unless `--requery-completed` is used.
+The bundle defines a manual `entsoe_historical_backfill` job. Set the date range
+with its run parameters: `entsoe_backfill_start` defaults to
+`2024-10-01T00:00:00Z`, and `entsoe_backfill_end` is an **exclusive** UTC
+timestamp. Leave the end blank to fetch through the current time. For example,
+to run from 2024-10-01 through (but not including) 2025-10-01 UTC:
+
+~~~sh
+databricks bundle run entsoe_historical_backfill -t dev \
+  --params entsoe_backfill_start=2024-10-01T00:00:00Z,entsoe_backfill_end=2025-10-01T00:00:00Z
+~~~
+
+The job only writes files to Landing. After it succeeds, run
+`databricks bundle run entsoe_ingestion -t dev` to process all landed files through
+Bronze, Silver, and Gold. Completed backfill windows are skipped on rerun unless
+`--requery-completed` is used.
 
 The REST API supports historical queries, but each request is limited to one year
 and 100 matching documents. The client starts with 364-day windows and halves a

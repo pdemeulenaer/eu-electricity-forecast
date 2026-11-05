@@ -1,0 +1,50 @@
+resources:
+  jobs:
+    day_ahead_training:
+      name: eu-electricity-forecast-day-ahead-training
+      tags:
+        aidevkit_project: ai-dev-kit
+      performance_target: STANDARD
+      max_concurrent_runs: 1
+      parameters:
+        - name: catalog
+          default: ${var.project_catalog}
+        - name: gold_schema
+          default: ${var.gold_schema}
+        - name: resolution_minutes
+          default: "15"
+        - name: series_by_zone_json
+          default: '{"DE_LU":"0552b247ac01a0458770800a3c6d0a59702f214490b578ecc6986eb67cf4a384","FR":"c351e0a80cd1d1d55299b92f352817ee2d252c87c105c062ba1004ddf6e907c3","NL":"fbd77da8617ad7f08c7ea76fe11924bb7696955147d21d13e3ba835d3573951c","LT":"0542226aa187758e65faba69bb8ec938b28956f5507c6c85cac53f911a2dfdae"}'
+        - name: experiment_path
+          default: /Users/${workspace.current_user.userName}/eu-electricity-forecast-day-ahead-price
+        - name: run_name
+          default: global-lightgbm-sdac-four-zone
+      tasks:
+        - task_key: train_and_evaluate
+          environment_key: training
+          python_wheel_task:
+            package_name: eu_electricity_forecast
+            entry_point: entsoe-train
+            parameters:
+              - --table
+              - "{{job.parameters.catalog}}.{{job.parameters.gold_schema}}.day_ahead_training_data"
+              - --series-by-zone
+              - "{{job.parameters.series_by_zone_json}}"
+              - --resolution-minutes
+              - "{{job.parameters.resolution_minutes}}"
+              - --experiment-path
+              - "{{job.parameters.experiment_path}}"
+              - --run-name
+              - "{{job.parameters.run_name}}"
+          max_retries: 0
+      environments:
+        - environment_key: training
+          spec:
+            environment_version: "6"
+            dependencies:
+              - ../dist/*.whl
+              - numpy==1.26.4
+              - pandas==2.3.3
+              - lightgbm==4.7.0
+              - scikit-learn==1.9.1
+              - mlflow==3.18.0

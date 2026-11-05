@@ -5,6 +5,11 @@ authors = [{ name = "pdemeulenaer@gmail.com" }]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "requests>=2.32,<3",
+    "numpy>=1.26,<3",
+    "pandas>=2.2,<3",
+    "lightgbm>=4.6,<5",
+    "scikit-learn>=1.6,<2",
+    "mlflow>=3,<4",
     # Any dependencies for jobs and pipelines in this project can be added here
     # See also https://docs.databricks.com/dev-tools/bundles/library-dependencies
     #
@@ -33,6 +38,7 @@ entsoe-survey = "eu_electricity_forecast.coverage:main"
 entsoe-autoload = "eu_electricity_forecast.bronze:main"
 entsoe-silver = "eu_electricity_forecast.silver:main"
 entsoe-gold-features = "eu_electricity_forecast.gold:main"
+entsoe-train = "eu_electricity_forecast.training:main"
 
 [build-system]
 requires = ["hatchling"]

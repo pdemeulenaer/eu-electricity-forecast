@@ -7,7 +7,8 @@ and controlled retraining. Detailed layer responsibilities are in the
 ## Decisions
 
 - Forecast day-ahead prices before publication; use historical replay for the demo.
-- Start with DE_LU, FR, NL, LT, then train on zones with adequate common coverage.
+- Train one global model on DE_LU, FR, NL, and LT together, using a selected
+  day-ahead auction series for each zone.
 - Predict absolute EUR/MWh with one global LightGBM model.
 - Preserve native resolution; handle the transition to 15-minute market intervals
   from October 2025 explicitly.
@@ -25,7 +26,7 @@ and controlled retraining. Detailed layer responsibilities are in the
 | 3 | Shared client, backfill, polling, immutable files | Implemented locally |
 | 4 | Bronze ingestion and Silver normalization | Implemented locally; deployment to project catalog pending |
 | 5 | Point-in-time features and leakage checks | Implemented locally; deployment and data checks pending |
-| 6 | Baselines, global model, MLflow registration | Planned |
+| 6 | Baselines, global model, MLflow experiment | Training module, interactive notebook, and manual four-zone wheel job implemented locally; workspace run pending |
 | 7 | Scoring and delayed-label reconciliation | Planned |
 | 8 | Drift and quality monitoring | Planned |
 | 9 | Retraining gates and model promotion | Planned |
@@ -77,9 +78,10 @@ the predictor columns.
 Start with an offline experiment after the latest bundle is deployed and the
 ingestion job has rebuilt Gold. First check `day_ahead_training_data` row counts,
 date coverage, duplicates, missing labels, and coverage by zone, resolution, and
-auction series. Choose one DE_LU auction series for the first run; do not combine
-series with different price definitions. Confirm that the selected target and
-cutoff are consistent across zones.
+auction series. The first shared target uses 15-minute A01 day-ahead prices in all
+four zones; for DE_LU use classification sequence 1 (SDAC), not sequence 2
+(EXAA's separate auction). Confirm that the selected target and cutoff are
+consistent across zones.
 
 Use explicit predictors (calendar fields, bidding zone, and only eligible price
 lags); exclude labels, target values, revision metadata, and fields unavailable at
@@ -93,9 +95,13 @@ delivery time, with shared chronological train, validation, and test windows acr
 zones; never randomly split rows. Report MAE/RMSE overall and by zone, auction,
 resolution, month, and high/negative-price regime. Log the data window and Delta
 versions, feature set, split dates, code revision, parameters, and metrics to
-MLflow. Keep the first model as an experiment; register it in Unity Catalog only
-after the held-out results and target definition are accepted. Then package the
-experiment as a repeatable Databricks training job.
+MLflow. Keep this model as an experiment; the training job does not register it.
+Later CI/CD can register a challenger and promote it only after evaluation against
+the Champion (or an initial acceptance gate when no Champion exists). Use the
+notebook for interactive exploration; model and evaluation code is in
+`src/eu_electricity_forecast/training.py`. The manual `day_ahead_training` wheel
+job runs the same entry point for repeatable evaluation. Keep it unscheduled until
+monitoring and Champion/Challenger CI/CD promotion gates are implemented.
 
 ### 7. Score and evaluate
 Write immutable predictions linked to the model and feature snapshot. Join labels

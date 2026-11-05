@@ -78,4 +78,5 @@ nav:
       - Bronze: reference/bronze.md
       - Silver: reference/silver.md
       - Gold features: reference/gold.md
+      - Model training: reference/training.md
       - Coverage survey: reference/coverage.md

@@ -1,8 +1,12 @@
 # Gold features
 
 The hourly ingestion job rebuilds the Gold features and labels after Silver
-normalization. Each feature row describes inputs for one issue time, zone,
-delivery interval, and auction series. Its target price is kept separately.
+normalization. Each row is one forecast example: one bidding zone, one delivery
+interval, and one auction series. For the selected 15-minute training series, the
+issue time is 10:00 Europe/Brussels on the previous local day. The row predicts
+that interval’s price; it does not mean “15 minutes from now.” A full next-day
+curve uses one row per 15-minute interval per zone (normally 96 rows per zone; 92
+or 100 when daylight-saving time changes the local day). Labels are stored separately.
 
 | Table | Contents |
 | --- | --- |
@@ -31,9 +35,10 @@ the cutoff. Backfill fetch time is not the original source arrival time, so lags
 from historical backfill remain null for old issue times. As scheduled polling
 gathers prior prices, eligible lag features can appear for new training examples.
 
-This version builds retrospective rows for delivery intervals present in Silver
-prices. It does not yet generate future intervals for live inference; that requires
-an explicit delivery schedule and target-auction configuration.
+This version builds retrospective examples from intervals already present in
+Silver prices. It does not yet create tomorrow’s future feature rows or write a
+forecast curve. A one-week-ahead model will need issue-time snapshots for target
+intervals up to seven days ahead, using only information available at each issue time.
 
 `target_*` columns identify the delivery interval and auction series; they do not
 contain the price label and are metadata for joins, not automatic predictor inputs.

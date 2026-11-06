@@ -22,13 +22,14 @@ flowchart TB
 
 | Layer | Contents | Status |
 | --- | --- | --- |
-| Landing | Immutable XML, JSONL observations, and request metadata in a Volume | First workspace run succeeded; relocation pending |
-| Bronze | Append-only, source-shaped observations | Implemented; deployment to project catalog pending |
-| Silver | Typed prices, load, generation, forecasts, and flows | Implemented locally; deployment pending |
-| Gold | Point-in-time features, predictions, evaluation, and monitoring data | Feature table implemented locally; deployment pending |
+| Landing | Immutable XML, JSONL observations, and request metadata in a Volume | Running in the project catalog |
+| Bronze | Append-only, source-shaped observations | Running in the project catalog |
+| Silver | Typed prices, load, generation, forecasts, and flows | Running in the project catalog |
+| Gold | Forecast features, predictions, evaluation, and monitoring data | Feature set 2.0.0 built; first model run completed |
 
-Gold is the business-consumption layer. It contains both point-in-time model inputs
-and model outputs; these are separate tables with different grains.
+Gold is the business-consumption layer. It contains model inputs and outputs in
+separate tables. Historical price lags use an explicit availability assumption;
+they are not exact historical source snapshots.
 
 ## Table shapes
 
@@ -56,7 +57,7 @@ Gold tables:
 
 | Table | Row grain | Use |
 | --- | --- | --- |
-| day_ahead_features | Issue time, zone, target interval, target auction | Point-in-time training rows; future inference rows to follow |
+| day_ahead_features | Issue time, zone, target interval, target auction | Historical training rows; future inference rows to follow |
 | day_ahead_price_labels | Zone, target interval, target auction | Latest known target price and revision metadata |
 | day_ahead_training_data | Feature row joined to its target label | Training view; label excluded from predictor columns |
 | price_predictions | Issue time, zone, target interval, model version | Forecast consumers |
@@ -71,19 +72,17 @@ delivery interval, and auction series. It contains the following versioned input
 | `calendar_*` | Delivery hour, weekday, month, weekend flag, and cyclic encodings, calculated in the zone's local time. |
 | `price_lag_24h_eur_mwh` | Price for the same auction series and delivery time 24 elapsed hours earlier. |
 | `price_lag_168h_eur_mwh` | Price for the same auction series and delivery time 168 elapsed hours earlier. |
-| `price_lag_*_available` | Whether that lag was observed by the issue cutoff. |
-| `price_lag_*_first_seen_at_utc` | Arrival time of the exact source vintage used for the lag. |
+| `price_lag_*_present` | Whether that prior interval has a price value in Silver's current view. |
+| `price_lag_*_source_first_seen_at_utc` | When the selected source version was downloaded; for backfill this is not the original publication time. |
 | `target_*` | Target interval and auction identifiers used to keep rows distinct; no target price value is included. |
 
 The configured issue time is 10:00 on the prior local delivery date, in
-`Europe/Brussels`; it remains provisional. Target rows come from Silver's `_current`
-view. Lag features read Silver's revision table, so a later correction cannot appear
-in an earlier snapshot.
-Price lags qualify only when their `first_seen_at_utc` is at or before that cutoff.
-ENTSO-E backfill timestamps reflect download time, so historical backfill values
-will not pass old cutoffs, so those historical lag values remain null. Calendar
-features are always available. This conservative rule avoids treating backfilled
-or later revisions as if they had been known earlier.
+`Europe/Brussels`; it remains provisional. Target rows and lag values use Silver's
+`_current` view. The lag intervals precede the target and are treated as known by
+the issue cutoff. This allows historical backfill to supply lag features, with the
+assumption that corrections to old prices are rare. `price_lag_*_source_first_seen_at_utc`
+is provenance only: backfill time is not original publication time, and the table
+does not reconstruct the exact historical version available at each cutoff.
 
 This first build creates retrospective training rows for delivery intervals found in
 Silver prices. It does not yet generate future delivery intervals for live inference;
@@ -98,7 +97,7 @@ latest known label by zone, target interval, resolution, and auction series. New
 source data still flows through
 Landing/Bronze/Silver before it is joined into Gold. A Unity Catalog Delta table can
 later be registered for Feature Engineering; the row key and issue time support
-point-in-time training lookups.
+training lookups that need point-in-time guarantees.
 
 ## Unity Catalog layout
 
@@ -108,10 +107,9 @@ source files and Auto Loader state; Bronze observations go to
 `bronze.bronze_entsoe_observations`. The Silver tables and Gold feature, label, and
 training-view objects use their matching schemas.
 
-The first successful run wrote to the existing `workspace.pdemeulenaer` location.
-The bundle will create the new catalog layout and direct subsequent ingestion there;
-existing files and table data need to be copied or replayed separately before the old
-location can be retired.
+The project catalog is `eu_electricity_forecast`, with `landing`, `bronze`,
+`silver`, and `gold` schemas. The hourly ingestion job rebuilds Gold features
+after Silver normalization.
 
 See Databricks guidance on [medallion architecture](https://docs.databricks.com/gcp/en/lakehouse/medallion),
 [Unity Catalog organization](https://docs.databricks.com/aws/en/lakehouse-architecture/data-governance/best-practices),

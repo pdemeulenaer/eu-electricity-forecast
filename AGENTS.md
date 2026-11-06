@@ -51,9 +51,12 @@
   first-seen timestamps where applicable. Preserve idempotent replay and
   revision handling.
 - Treat missing observations as missing, not zero. Preserve negative prices.
-- Prevent data leakage: a feature vintage must be available at or before the
-  forecast issue time. A historical backfill's first-seen time is its download
-  time, not proof of historical publication time.
+- For historical price lags, use the latest Silver current value at 24 and 168
+  elapsed hours before the target and assume it was available by issue time.
+  Backfill first-seen time is download time, not proof of original publication;
+  document that later corrections are not replayed as-of each historical issue.
+- For other forecast inputs, use only vintages available by issue time. Keep
+  the target price itself out of predictors.
 - Keep target prices and unavailable future information out of predictors.
   Use chronological evaluation splits and explain any changes to the target,
   issue cutoff, feature availability, or evaluation method.

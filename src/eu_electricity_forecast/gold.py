@@ -1,4 +1,4 @@
-"""Build point-in-time day-ahead price features in the Gold schema."""
+"""Build historical day-ahead price features in the Gold schema."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ AUCTION_COLUMNS = (
     "in_bidding_zone_eic",
     "out_bidding_zone_eic",
 )
-FEATURE_SET_VERSION = "1.0.0"
+FEATURE_SET_VERSION = "2.0.0"
 
 
 def _series_key():
@@ -41,14 +41,12 @@ def _with_price_lag(features, history, lag_hours: int):
     from pyspark.sql.functions import col, expr, row_number
 
     feature_name = f"price_lag_{lag_hours}h_eur_mwh"
-    observed_name = f"{feature_name}_first_seen_at_utc"
+    observed_name = f"{feature_name}_source_first_seen_at_utc"
     t, h = features.alias("t"), history.alias("h")
     condition = (
         (col("t.bidding_zone") == col("h.bidding_zone"))
         & (col("t.target_auction_series_key") == col("h.auction_series_key"))
         & (col("h.timestamp_utc") == col("t.target_interval_start_utc") - expr(f"INTERVAL {lag_hours} HOURS"))
-        & col("h.first_seen_at_utc").isNotNull()
-        & (col("h.first_seen_at_utc") <= col("t.forecast_issue_time_utc"))
     )
     order = Window.partitionBy(col("t.feature_row_key")).orderBy(
         col("h.first_seen_at_utc").desc_nulls_last(),
@@ -64,12 +62,12 @@ def _with_price_lag(features, history, lag_hours: int):
             col("h.value").cast("double").alias(feature_name),
             col("h.first_seen_at_utc").alias(observed_name),
         )
-        .withColumn(f"{feature_name}_available", col(feature_name).isNotNull())
+        .withColumn(f"{feature_name}_present", col(feature_name).isNotNull())
     )
 
 
 def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: str, config: dict) -> None:
-    """Rebuild Gold training snapshots using only price vintages seen by issue time.
+    """Rebuild Gold training snapshots using current historical prices for lags.
 
     Historical target intervals are discovered from Silver day-ahead prices. The target
     price itself is used only to identify training rows; its value is never written to
@@ -119,9 +117,9 @@ def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: s
         (col("data_item") == "day_ahead_prices") & (col("unit") == "EUR/MWh")
     )
     current_prices = current_prices.withColumn("auction_series_key", _series_key())
-    # Read the version table (not its _current view) so each lag uses only revisions
-    # that had actually arrived by the forecast issue time. Target rows define the
-    # retrospective examples, not feature values.
+    # Historical backfills do not preserve original arrival times. Use the current
+    # Silver price for each lag and treat it as known at issue time; this assumes
+    # historical price corrections are rare. Keep auction series separate.
     local_delivery = from_utc_timestamp(col("timestamp_utc"), element_at(timezone_map, col("bidding_zone")))
     issue_wall_time = to_timestamp(
         concat(
@@ -210,7 +208,7 @@ def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: s
             "calendar_month_cos",
         )
     )
-    history = prices.select(
+    history = current_prices.select(
         "bidding_zone",
         "auction_series_key",
         "timestamp_utc",
@@ -224,7 +222,7 @@ def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: s
     (features.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_table))
     spark.sql(
         f"COMMENT ON TABLE {target_table} IS "
-        "'Point-in-time model inputs for day-ahead prices. Excludes target price labels.'"
+        "'Historical model inputs for day-ahead prices. Price lags use latest Silver values as historical availability proxies. Excludes target price labels.'"
     )
     print(
         json.dumps(
@@ -233,7 +231,7 @@ def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: s
                 "feature_set_version": FEATURE_SET_VERSION,
                 "issue_timezone": issue_timezone,
                 "issue_time_local": issue_time,
-                "availability_rule": "first_seen_at_utc <= forecast_issue_time_utc",
+                "lag_availability_policy": "latest_silver_current_value_assumed_known_at_issue_time",
                 "status": "rebuilt",
             },
             sort_keys=True,
@@ -277,7 +275,7 @@ def build_day_ahead_price_labels(*, catalog: str, silver_schema: str, gold_schem
 
 
 def build_day_ahead_training_view(*, catalog: str, gold_schema: str) -> None:
-    """Join point-in-time features to their latest known target price labels."""
+    """Join historical features to their latest known target price labels."""
     from pyspark.sql import SparkSession
 
     spark = SparkSession.builder.getOrCreate()

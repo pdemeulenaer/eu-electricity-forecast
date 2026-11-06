@@ -31,8 +31,8 @@ The experiment selects one 15-minute auction series for each of `DE_LU`, `FR`,
 | --- | --- |
 | Zone | Which bidding zone the target belongs to; treated as a category. |
 | Calendar | Local delivery time, weekday, month, weekend flag, and cyclical encodings of time, weekday, and month. |
-| Price history | Same-series price at the target time 24 and 168 hours earlier, when that price had arrived by the forecast cutoff. |
-| Lag availability | Whether each lag was available at the cutoff. |
+| Price history | Latest same-series price at the target time 24 and 168 hours earlier. |
+| Lag presence | Whether each lag value exists in Silver's current view. Historical values are assumed to have been known by the cutoff; later corrections are not replayed as-of each date. |
 
 There are no weather, load, generation, or flow inputs yet. For `DE_LU`, the
 selected target is sequence 1 (SDAC); sequence 2 (EXAA) is a different auction.
@@ -45,40 +45,37 @@ that group is missing, it falls back to the zone median, then the global median.
 LightGBM receives the same calendar information plus the price lags, but more
 inputs do not guarantee better predictions.
 
-Data is split by delivery time, in chronological order: first 70% for training,
-next 15% for validation, final 15% for the held-out test. The same time cutoffs
-apply to all zones, so a delivery timestamp cannot appear in multiple splits.
-For the 2026-11-05 run, training ended before 2026-07-08 13:45 UTC; validation
-ran until 2026-09-06 18:00 UTC; the test began then and covered the remaining
-available data through November. Counts were 105,015 train, 22,465 validation,
-and 22,715 test rows.
+Data is split chronologically by delivery time: 70% train, 15% validation, and
+15% test, using shared cutoffs across zones. The 2026-11-06 run used feature set
+2.0.0 and contained 105,287 train rows, 22,518 validation rows, and 22,772 test
+rows. Training ended before 2026-07-09 06:45 UTC; validation ended before
+2026-09-07 14:30 UTC; the test covered the remaining data through early November.
 
-This is one chronological holdout, not cross-validation. The test covers autumn,
-not a full annual cycle, so this run does not establish performance across all
-seasons. Both model and baseline are scored with MAE and RMSE overall and by zone,
-month, and price regime. Do not use the test period to tune the model.
+This is one autumn holdout, not cross-validation or a full seasonal evaluation.
+The model and baseline are scored with mean absolute error (MAE) and root mean
+squared error (RMSE), overall and by zone, month, and price regime. Do not use
+the test period to tune the model.
 
-Inspect series coverage and price-lag availability in
+Inspect series coverage and price-lag presence in
 `src/notebooks/model_training_experiment.ipynb`. Reusable code is in
 `eu_electricity_forecast.training`; the `day_ahead_training` bundle job runs it
 on serverless and is unscheduled. Runs log metrics and source Delta versions to
 MLflow but do not register a model.
 
-The first experiment (2026-11-05) trained on 105,015 rows and tested on 22,715.
-Test MAE was 91.80 €/MWh for LightGBM and 91.50 for the seasonal baseline; RMSE
-was 109.34 and 107.67 respectively. This single test period shows a small loss
-for LightGBM, not why it happened or whether the gap is stable. Lag availability
-and per-zone/month/price-regime results should be checked before drawing a
-conclusion. [View the MLflow run](https://dbc-b0577817-50e1.cloud.databricks.com/ml/experiments/4359392245988199/runs/852d07c337274a43b2c1df2cf65ca763).
+The 2026-11-06 feature set 2.0.0 run beat the seasonal baseline on validation and
+test:
 
-A lag-availability audit on 2026-11-06 found **0 of 105,015 training rows** and
-**0 of 22,465 validation rows** had either lag available. In the current Gold
-snapshot, 3,555 of 23,097 test rows (15.39%) have the 24-hour lag and 4,672
-(20.23%) have the 168-hour lag. That snapshot has 382 more test rows than the
-original run, so its test coverage rates are estimates for that run. The model
-was fitted without observed lag values, while some test rows have them; rerun
-without lag predictors or rebuild trustworthy historical point-in-time lags
-before judging their value.
+| Split | Rows | Model MAE | Baseline MAE | Model RMSE | Baseline RMSE |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Validation | 22,518 | 31.65 | 53.24 | 40.92 | 61.11 |
+| Test | 22,772 | 65.61 | 93.38 | 83.34 | 110.09 |
+
+All metrics are in €/MWh. Test MAE was lower for LightGBM in each zone: DE_LU
+62.25 vs 89.22, FR 62.20 vs 109.96, LT 77.30 vs 83.33, and NL 60.72 vs 91.24.
+November was the hardest test month (MAE 109.95 vs 168.62). These results are
+promising for this split, but do not establish performance across seasons. The
+historical lag availability assumption described in the [Gold reference](gold.md)
+also applies to this run. [View the MLflow run](https://dbc-b0577817-50e1.cloud.databricks.com/ml/experiments/4359392245988199/runs/3208d46a10134982a5ed8295a5b5939c).
 
 A one-week-ahead model remains a sensible target. It will require training
 examples with issue times up to seven days before delivery, plus weather and

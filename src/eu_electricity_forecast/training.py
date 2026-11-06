@@ -24,8 +24,8 @@ PREDICTORS = [
     "calendar_month_cos",
     "price_lag_24h_eur_mwh",
     "price_lag_168h_eur_mwh",
-    "price_lag_24h_eur_mwh_available",
-    "price_lag_168h_eur_mwh_available",
+    "price_lag_24h_eur_mwh_present",
+    "price_lag_168h_eur_mwh_present",
 ]
 REQUIRED = [
     "bidding_zone",
@@ -74,8 +74,8 @@ def target_coverage(spark, table_name: str):
             F.count("*").alias("row_count"),
             F.min("target_interval_start_utc").alias("first_delivery_utc"),
             F.max("target_interval_start_utc").alias("last_delivery_utc"),
-            F.sum(F.col("price_lag_24h_eur_mwh_available").cast("int")).alias("rows_with_24h_lag"),
-            F.sum(F.col("price_lag_168h_eur_mwh_available").cast("int")).alias("rows_with_168h_lag"),
+            F.sum(F.col("price_lag_24h_eur_mwh_present").cast("int")).alias("rows_with_24h_lag"),
+            F.sum(F.col("price_lag_168h_eur_mwh_present").cast("int")).alias("rows_with_168h_lag"),
         )
         .orderBy("target_resolution_minutes", "target_auction_type", "bidding_zone")
     )

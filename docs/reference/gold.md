@@ -10,30 +10,31 @@ or 100 when daylight-saving time changes the local day). Labels are stored separ
 
 | Table | Contents |
 | --- | --- |
-| `day_ahead_features` | Point-in-time inputs; target price excluded. |
+| `day_ahead_features` | Historical inputs; target price excluded. |
 | `day_ahead_price_labels` | Latest known price and revision per zone, interval, and auction series. |
 | `day_ahead_training_data` | View joining features to their labels at that target grain. |
 
 Labels are rebuilt from `silver_prices_current`. When a newly ingested revision
-becomes current, the label value changes on the next Gold run. Feature lags still
-obey the issue-time availability rule below: later corrections cannot be treated
-as if they were known at earlier forecast cutoffs. The label is an outcome, never
-a predictor.
+becomes current, the label value changes on the next Gold run. The label is an
+outcome, never a predictor.
 
 | Feature family | Columns | Definition |
 | --- | --- | --- |
 | Calendar | `calendar_hour_local`, `calendar_day_of_week_local`, `calendar_month_local`, `calendar_is_weekend` | Delivery time in the bidding zone's local timezone. |
 | Calendar cycles | `calendar_time_of_day_*`, `calendar_day_of_week_*`, `calendar_month_*` | Sine/cosine encodings for recurring time patterns. |
 | Prior prices | `price_lag_24h_eur_mwh`, `price_lag_168h_eur_mwh` | Same auction series and exact delivery timestamp 24 or 168 elapsed hours earlier. |
-| Prior-price availability | `price_lag_*_available`, `price_lag_*_first_seen_at_utc` | Whether the selected version was observed by the issue cutoff, and when it first arrived. |
+| Prior-price presence and provenance | `price_lag_*_present`, `price_lag_*_source_first_seen_at_utc` | Whether a lag value exists in Silver's current view, plus when the selected source version was downloaded. |
 
 `forecast_issue_time_utc` uses the configured provisional 10:00 `Europe/Brussels`
-cutoff on the day before local delivery. The builder reads the Silver revision table,
-not the `_current` view; a correction is eligible only after its own
-`first_seen_at_utc`, and a lag is included only when that arrival is no later than
-the cutoff. Backfill fetch time is not the original source arrival time, so lags
-from historical backfill remain null for old issue times. As scheduled polling
-gathers prior prices, eligible lag features can appear for new training examples.
+cutoff on the day before local delivery. A lag points to the same auction series
+and delivery clock time 24 or 168 elapsed hours earlier, so its delivery interval
+precedes the target. The builder uses the latest Silver current value for that
+past interval, including backfilled history. It assumes that value was available
+by the forecast cutoff; `*_source_first_seen_at_utc` records download time, not
+original publication time. Historical corrections are not reconstructed as of
+each issue time, so a later correction could appear in an older example. This is
+a deliberate approximation because original historical arrival times are absent
+from the backfill.
 
 This version builds retrospective examples from intervals already present in
 Silver prices. It does not yet create tomorrow’s future feature rows or write a

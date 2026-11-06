@@ -71,6 +71,15 @@ for LightGBM, not why it happened or whether the gap is stable. Lag availability
 and per-zone/month/price-regime results should be checked before drawing a
 conclusion. [View the MLflow run](https://dbc-b0577817-50e1.cloud.databricks.com/ml/experiments/4359392245988199/runs/852d07c337274a43b2c1df2cf65ca763).
 
+A lag-availability audit on 2026-11-06 found **0 of 105,015 training rows** and
+**0 of 22,465 validation rows** had either lag available. In the current Gold
+snapshot, 3,555 of 23,097 test rows (15.39%) have the 24-hour lag and 4,672
+(20.23%) have the 168-hour lag. That snapshot has 382 more test rows than the
+original run, so its test coverage rates are estimates for that run. The model
+was fitted without observed lag values, while some test rows have them; rerun
+without lag predictors or rebuild trustworthy historical point-in-time lags
+before judging their value.
+
 A one-week-ahead model remains a sensible target. It will require training
 examples with issue times up to seven days before delivery, plus weather and
 other forecast inputs matched to the version available at each issue time.

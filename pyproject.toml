@@ -24,6 +24,8 @@ dev = [
     "databricks-dlt",
     "databricks-connect>=16.4,<16.5",
     "ipykernel",
+    "databricks-sdk[notebook]>=0.151.0",
+    "matplotlib>=3.8,<4",
 ]
 docs = [
     "mkdocs-material>=9.6,<10",

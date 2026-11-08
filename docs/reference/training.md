@@ -56,11 +56,13 @@ The model and baseline are scored with mean absolute error (MAE) and root mean
 squared error (RMSE), overall and by zone, month, and price regime. Do not use
 the test period to tune the model.
 
-Inspect series coverage and price-lag presence in
-`src/notebooks/model_training_experiment.ipynb`. Reusable code is in
-`eu_electricity_forecast.training`; the `day_ahead_training` bundle job runs it
-on serverless and is unscheduled. Runs log metrics and source Delta versions to
-MLflow but do not register a model.
+Reusable code is in `eu_electricity_forecast.training`; the unscheduled
+`day_ahead_training` bundle job runs it on serverless. Runs log metrics, source
+Delta versions, and the model to MLflow but do not register a model. The
+`src/notebooks/model_training_experiment.ipynb` notebook loads the latest
+completed run and rebuilds its held-out predictions from the recorded Delta
+versions, then plots actual, LightGBM, and baseline prices for all zones. It
+does not retrain the model or require manual auction-series IDs.
 
 The 2026-11-06 feature set 2.0.0 run beat the seasonal baseline on validation and
 test:

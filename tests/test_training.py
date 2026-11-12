@@ -1,6 +1,14 @@
 import pandas as pd
 
-from eu_electricity_forecast.training import PREDICTORS, _validate_and_prepare, chronological_split
+from eu_electricity_forecast.training import (
+    PREDICTORS,
+    TARGET,
+    _weekly_lag_comparison,
+    _weekly_lag_predictions,
+    _validate_and_prepare,
+    chronological_split,
+    rolling_origin_splits,
+)
 
 
 def test_chronological_split_keeps_shared_timestamps_in_one_partition():
@@ -98,3 +106,100 @@ def test_global_model_requires_all_four_project_zones():
         assert "exactly DE_LU, FR, NL, and LT" in str(exc)
     else:
         raise AssertionError("Expected incomplete zone selection to fail")
+
+
+def test_rolling_origin_splits_use_past_training_and_non_overlapping_test_windows():
+    frame = pd.DataFrame(
+        {
+            "target_interval_start_utc": pd.date_range("2025-01-01", periods=400, freq="D", tz="UTC"),
+            "value": range(400),
+        }
+    )
+
+    folds = rolling_origin_splits(
+        frame,
+        minimum_train_days=180,
+        test_window_days=7,
+        step_days=7,
+        resolution_minutes=1440,
+    )
+
+    assert len(folds) > 20
+    for fold in folds:
+        assert fold["train"]["target_interval_start_utc"].max() < fold["test_start_utc"]
+        assert fold["test"]["target_interval_start_utc"].min() == fold["test_start_utc"]
+        assert len(fold["test"]) == 7
+    for previous, current in zip(folds, folds[1:]):
+        assert previous["test_end_exclusive_utc"] == current["test_start_utc"]
+
+
+def test_rolling_origin_supports_a_fixed_recent_training_window():
+    frame = pd.DataFrame(
+        {"target_interval_start_utc": pd.date_range("2025-01-01", periods=250, freq="D", tz="UTC")}
+    )
+
+    first_fold = rolling_origin_splits(
+        frame,
+        minimum_train_days=180,
+        test_window_days=7,
+        step_days=7,
+        training_window_days=30,
+        resolution_minutes=1440,
+    )[0]
+
+    assert len(first_fold["train"]) == 30
+    assert first_fold["train"]["target_interval_start_utc"].min() == first_fold["test_start_utc"] - pd.Timedelta(days=30)
+
+
+def test_rolling_origin_rejects_overlapping_test_windows():
+    frame = pd.DataFrame(
+        {"target_interval_start_utc": pd.date_range("2025-01-01", periods=250, freq="D", tz="UTC")}
+    )
+
+    try:
+        rolling_origin_splits(
+            frame,
+            minimum_train_days=180,
+            test_window_days=7,
+            step_days=1,
+            resolution_minutes=1440,
+        )
+    except ValueError as exc:
+        assert "avoid scoring rows more than once" in str(exc)
+    else:
+        raise AssertionError("Expected overlapping windows to fail")
+
+
+def test_weekly_lag_baseline_uses_only_lags_marked_present():
+    frame = pd.DataFrame(
+        {
+            "price_lag_168h_eur_mwh": [100.0, 200.0, None],
+            "price_lag_168h_eur_mwh_present": [True, False, True],
+        }
+    )
+
+    predictions = _weekly_lag_predictions(frame)
+
+    assert predictions.iloc[0] == 100.0
+    assert pd.isna(predictions.iloc[1])
+    assert pd.isna(predictions.iloc[2])
+
+
+def test_weekly_lag_metrics_compare_methods_on_the_same_available_rows():
+    scored = pd.DataFrame(
+        {
+            "bidding_zone": ["FR", "FR", "NL"],
+            TARGET: [10.0, 20.0, 30.0],
+            "model_prediction": [12.0, 22.0, 40.0],
+            "seasonal_baseline_prediction": [15.0, 15.0, 25.0],
+            "weekly_lag_baseline_prediction": [11.0, float("nan"), 28.0],
+        }
+    )
+
+    metrics = _weekly_lag_comparison(scored)
+
+    assert metrics["rows"] == 2
+    assert metrics["coverage"] == 2 / 3
+    assert metrics["model_on_available_rows"]["mae"] == 6.0
+    assert metrics["weekly_lag_baseline"]["mae"] == 1.5
+    assert set(metrics["by_zone"]) == {"FR", "NL"}

@@ -18,7 +18,17 @@ resources:
         - name: experiment_path
           default: /Users/${workspace.current_user.userName}/eu-electricity-forecast-day-ahead-price
         - name: run_name
-          default: global-lightgbm-sdac-four-zone
+          default: global-lightgbm-rolling-backtest
+        - name: evaluation_strategy
+          default: rolling_origin
+        - name: rolling_minimum_train_days
+          default: "180"
+        - name: rolling_test_window_days
+          default: "7"
+        - name: rolling_step_days
+          default: "7"
+        - name: rolling_training_window_days
+          default: "0"
       tasks:
         - task_key: train_and_evaluate
           environment_key: training
@@ -36,6 +46,16 @@ resources:
               - "{{job.parameters.experiment_path}}"
               - --run-name
               - "{{job.parameters.run_name}}"
+              - --evaluation-strategy
+              - "{{job.parameters.evaluation_strategy}}"
+              - --rolling-minimum-train-days
+              - "{{job.parameters.rolling_minimum_train_days}}"
+              - --rolling-test-window-days
+              - "{{job.parameters.rolling_test_window_days}}"
+              - --rolling-step-days
+              - "{{job.parameters.rolling_step_days}}"
+              - --rolling-training-window-days
+              - "{{job.parameters.rolling_training_window_days}}"
           max_retries: 0
       environments:
         - environment_key: training

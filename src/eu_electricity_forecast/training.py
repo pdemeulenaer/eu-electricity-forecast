@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import tempfile
 from collections.abc import Mapping
 from typing import Any
 
@@ -191,6 +192,70 @@ def chronological_split(frame, train_fraction: float = 0.70, validation_fraction
     }
 
 
+def rolling_origin_splits(
+    frame,
+    *,
+    minimum_train_days: int = 180,
+    test_window_days: int = 7,
+    step_days: int = 7,
+    training_window_days: int = 0,
+    resolution_minutes: int = 15,
+):
+    """Create non-overlapping UTC test windows after a minimum historical warm-up.
+
+    A zero ``training_window_days`` uses all earlier rows (expanding history). A
+    positive value limits each fit to that many days before its test window.
+    """
+    import pandas as pd
+
+    if min(minimum_train_days, test_window_days, step_days) < 1:
+        raise ValueError("minimum_train_days, test_window_days, and step_days must be positive.")
+    if step_days < test_window_days:
+        raise ValueError("step_days must be at least test_window_days to avoid scoring rows more than once.")
+    if training_window_days < 0:
+        raise ValueError("training_window_days cannot be negative; use 0 for expanding history.")
+    if frame.empty:
+        raise ValueError("Cannot create rolling splits from an empty frame.")
+
+    times = pd.to_datetime(frame["target_interval_start_utc"], utc=True)
+    first_origin = (times.min() + pd.Timedelta(days=minimum_train_days)).ceil("D")
+    last_available = times.max() + pd.Timedelta(minutes=resolution_minutes)
+    folds = []
+    origin = first_origin
+    fold_number = 1
+    while origin + pd.Timedelta(days=test_window_days) <= last_available:
+        test_end = origin + pd.Timedelta(days=test_window_days)
+        train_start = (
+            origin - pd.Timedelta(days=training_window_days)
+            if training_window_days
+            else times.min()
+        )
+        train_mask = (times < origin) & (times >= train_start)
+        test_mask = (times >= origin) & (times < test_end)
+        train = frame.loc[train_mask].copy()
+        test = frame.loc[test_mask].copy()
+        if not train.empty and not test.empty:
+            folds.append(
+                {
+                    "fold_id": fold_number,
+                    "train_start_utc": train["target_interval_start_utc"].min(),
+                    "train_end_exclusive_utc": origin,
+                    "test_start_utc": origin,
+                    "test_end_exclusive_utc": test_end,
+                    "train": train,
+                    "test": test,
+                }
+            )
+            fold_number += 1
+        origin += pd.Timedelta(days=step_days)
+    if not folds:
+        raise ValueError(
+            "No complete rolling test windows fit the available data. Reduce minimum_train_days "
+            "or test_window_days, or load more history."
+        )
+    return folds
+
+
 def _features(frame, zone_categories):
     import pandas as pd
 
@@ -239,6 +304,58 @@ def _group_metrics(scored, group_column):
     return groups
 
 
+def _weekly_lag_predictions(frame):
+    """Return the same-series 168-elapsed-hour lag where Gold marks it available."""
+    import numpy as np
+    import pandas as pd
+
+    if "price_lag_168h_eur_mwh" not in frame:
+        return pd.Series(np.nan, index=frame.index, dtype=float)
+    values = pd.to_numeric(frame["price_lag_168h_eur_mwh"], errors="coerce")
+    available = values.notna()
+    present_column = "price_lag_168h_eur_mwh_present"
+    if present_column in frame:
+        present = frame[present_column]
+        if not pd.api.types.is_bool_dtype(present.dtype):
+            present = present.astype(str).str.lower().isin(("true", "1", "yes"))
+        else:
+            present = present.fillna(False)
+        available &= present
+    return values.where(available)
+
+
+def _weekly_lag_comparison(scored):
+    """Compare weekly-lag forecasts with other methods on rows where lag exists."""
+    available = scored.dropna(subset=["weekly_lag_baseline_prediction"])
+    if available.empty:
+        return {
+            "rows": 0,
+            "coverage": 0.0,
+            "weekly_lag_baseline": None,
+            "model_on_available_rows": None,
+            "seasonal_baseline_on_available_rows": None,
+            "by_zone": {},
+        }
+    by_zone = {}
+    for zone, group in available.groupby("bidding_zone", dropna=False):
+        by_zone[str(zone)] = {
+            "rows": len(group),
+            "model": _metrics(group[TARGET], group["model_prediction"]),
+            "seasonal_baseline": _metrics(group[TARGET], group["seasonal_baseline_prediction"]),
+            "weekly_lag_baseline": _metrics(group[TARGET], group["weekly_lag_baseline_prediction"]),
+        }
+    return {
+        "rows": len(available),
+        "coverage": float(len(available) / len(scored)),
+        "weekly_lag_baseline": _metrics(available[TARGET], available["weekly_lag_baseline_prediction"]),
+        "model_on_available_rows": _metrics(available[TARGET], available["model_prediction"]),
+        "seasonal_baseline_on_available_rows": _metrics(
+            available[TARGET], available["seasonal_baseline_prediction"]
+        ),
+        "by_zone": by_zone,
+    }
+
+
 def run_experiment(
     frame,
     *,
@@ -282,6 +399,7 @@ def run_experiment(
         ].copy()
         predictions[split_name]["model_prediction"] = model_values
         predictions[split_name]["seasonal_baseline_prediction"] = baseline_values
+        predictions[split_name]["weekly_lag_baseline_prediction"] = _weekly_lag_predictions(split_frame).to_numpy()
         scored = predictions[split_name].copy()
         scored["month_local"] = split_frame["calendar_month_local"].to_numpy()
         scored["price_regime"] = "ordinary"
@@ -290,6 +408,7 @@ def run_experiment(
         all_metrics[split_name] = {
             "model": _metrics(split_frame[TARGET], model_values),
             "seasonal_baseline": _metrics(split_frame[TARGET], baseline_values),
+            "weekly_lag_comparison": _weekly_lag_comparison(scored),
             "rows": len(split_frame),
             "by_zone": _group_metrics(scored, "bidding_zone"),
             "by_month": _group_metrics(scored, "month_local"),
@@ -319,6 +438,14 @@ def run_experiment(
                 for metric_name, value in metrics[model_name].items():
                     mlflow.log_metric(f"{split_name}_{model_name}_{metric_name}", value)
             mlflow.log_metric(f"{split_name}_rows", metrics["rows"])
+            weekly_metrics = metrics["weekly_lag_comparison"]
+            mlflow.log_metric(f"{split_name}_weekly_lag_available_rows", weekly_metrics["rows"])
+            mlflow.log_metric(f"{split_name}_weekly_lag_coverage", weekly_metrics["coverage"])
+            if weekly_metrics["weekly_lag_baseline"] is not None:
+                for metric_name, value in weekly_metrics["weekly_lag_baseline"].items():
+                    mlflow.log_metric(f"{split_name}_weekly_lag_baseline_{metric_name}", value)
+                for metric_name, value in weekly_metrics["model_on_available_rows"].items():
+                    mlflow.log_metric(f"{split_name}_model_on_weekly_lag_rows_{metric_name}", value)
             for dimension in ("by_zone", "by_month", "by_price_regime"):
                 for group_value, group_metrics in metrics[dimension].items():
                     metric_group = group_value.replace(".", "_").replace("-", "_")
@@ -330,9 +457,8 @@ def run_experiment(
         mlflow.log_dict(
             {
                 "target": TARGET,
-                "feature_set_versions": sorted(data.get("feature_set_version", []).dropna().unique().tolist())
-                if "feature_set_version" in data
-                else [],
+                "feature_set_versions": sorted(data["feature_set_version"].dropna().unique().tolist())
+                if "feature_set_version" in data else [],
                 "split_cutoffs": cutoffs,
                 "series_by_zone": dict(series_by_zone),
                 "source_table": source_table,
@@ -353,6 +479,193 @@ def run_experiment(
         }
 
 
+def run_rolling_experiment(
+    frame,
+    *,
+    series_by_zone: Mapping[str, str],
+    resolution_minutes: int,
+    experiment_path: str,
+    run_name: str = "global-lightgbm-rolling-backtest",
+    lightgbm_params: Mapping[str, Any] | None = None,
+    source_table: str = "unknown",
+    source_delta_versions: Mapping[str, int] | None = None,
+    code_revision: str | None = None,
+    minimum_train_days: int = 180,
+    test_window_days: int = 7,
+    step_days: int = 7,
+    training_window_days: int = 0,
+):
+    """Evaluate a fixed-parameter global model over sequential rolling-origin folds.
+
+    Each fold fits a new model using only earlier labelled rows. Test windows do
+    not overlap, so pooled metrics count each held-out row once.
+    """
+    import lightgbm as lgb
+    import mlflow
+    import mlflow.lightgbm  # noqa: F401 -- registers the LightGBM flavor
+    import numpy as np
+    import pandas as pd
+
+    data = _validate_and_prepare(frame, series_by_zone, resolution_minutes)
+    folds = rolling_origin_splits(
+        data,
+        minimum_train_days=minimum_train_days,
+        test_window_days=test_window_days,
+        step_days=step_days,
+        training_window_days=training_window_days,
+        resolution_minutes=resolution_minutes,
+    )
+    params = {"n_estimators": 400, "learning_rate": 0.04, "num_leaves": 31, "random_state": 42, "verbosity": -1}
+    params.update(dict(lightgbm_params or {}))
+    prediction_frames = []
+    fold_metrics = []
+    feature_importances = []
+
+    for fold in folds:
+        train, test = fold["train"], fold["test"]
+        if len(train) < 100:
+            raise ValueError(f"Fold {fold['fold_id']} has only {len(train)} training rows; need at least 100.")
+        model = lgb.LGBMRegressor(**params)
+        zone_categories = sorted(train["bidding_zone"].dropna().unique().tolist())
+        train_x, feature_cols = _features(train, zone_categories)
+        test_x, _ = _features(test, zone_categories)
+        model.fit(train_x, train[TARGET], categorical_feature=["bidding_zone"])
+        scored = test[[
+            "bidding_zone", "target_interval_start_utc", TARGET, "target_auction_series_key"
+        ]].copy()
+        scored["model_prediction"] = model.predict(test_x)
+        scored["seasonal_baseline_prediction"] = _seasonal_baseline(train, test)
+        scored["weekly_lag_baseline_prediction"] = _weekly_lag_predictions(test).to_numpy()
+        scored["fold_id"] = fold["fold_id"]
+        scored["fold_start_utc"] = fold["test_start_utc"].isoformat()
+        scored["fold_end_exclusive_utc"] = fold["test_end_exclusive_utc"].isoformat()
+        prediction_frames.append(scored)
+        feature_importances.append(pd.Series(model.feature_importances_, index=feature_cols))
+        fold_metrics.append(
+            {
+                "fold_id": fold["fold_id"],
+                "train_rows": len(train),
+                "test_rows": len(test),
+                "train_start_utc": fold["train_start_utc"].isoformat(),
+                "train_end_exclusive_utc": fold["train_end_exclusive_utc"].isoformat(),
+                "test_start_utc": fold["test_start_utc"].isoformat(),
+                "test_end_exclusive_utc": fold["test_end_exclusive_utc"].isoformat(),
+                "model": _metrics(test[TARGET], scored["model_prediction"]),
+                "seasonal_baseline": _metrics(test[TARGET], scored["seasonal_baseline_prediction"]),
+                "weekly_lag_comparison": _weekly_lag_comparison(scored),
+                "by_zone": _group_metrics(scored, "bidding_zone"),
+            }
+        )
+
+    predictions = pd.concat(prediction_frames, ignore_index=True).sort_values(
+        ["target_interval_start_utc", "bidding_zone"]
+    ).reset_index(drop=True)
+    pooled = {
+        "rows": len(predictions),
+        "model": _metrics(predictions[TARGET], predictions["model_prediction"]),
+        "seasonal_baseline": _metrics(predictions[TARGET], predictions["seasonal_baseline_prediction"]),
+        "by_zone": _group_metrics(predictions, "bidding_zone"),
+        "weekly_lag_comparison": _weekly_lag_comparison(predictions),
+    }
+    # Equal-weight the zones as a companion view; the pooled metrics above weight
+    # every forecast row equally, so zones with more valid labels contribute more.
+    pooled["macro_zone_average"] = {
+        model_name: {
+            metric_name: float(np.mean([zone[model_name][metric_name] for zone in pooled["by_zone"].values()]))
+            for metric_name in ("mae", "rmse")
+        }
+        for model_name in ("model", "seasonal_baseline")
+    }
+    mlflow.set_registry_uri("databricks-uc")
+    mlflow.set_experiment(experiment_path)
+    with mlflow.start_run(run_name=run_name) as run:
+        mlflow.log_params(
+            {
+                "evaluation_strategy": "rolling_origin",
+                "model": "lightgbm.LGBMRegressor",
+                "resolution_minutes": int(resolution_minutes),
+                "zones": ",".join(sorted(series_by_zone)),
+                "source_table": source_table,
+                "code_revision": code_revision or os.environ.get("GIT_COMMIT", "unknown"),
+                "feature_columns": ",".join(feature_cols),
+                "fold_count": len(folds),
+                "minimum_train_days": minimum_train_days,
+                "test_window_days": test_window_days,
+                "step_days": step_days,
+                "training_window_days": training_window_days,
+                "high_price_threshold_from_train": "fold-specific",
+                **{f"series_{zone}": key for zone, key in series_by_zone.items()},
+                **params,
+            }
+        )
+        for model_name in ("model", "seasonal_baseline"):
+            for metric_name, value in pooled[model_name].items():
+                mlflow.log_metric(f"pooled_{model_name}_{metric_name}", value)
+                mlflow.log_metric(f"macro_zone_{model_name}_{metric_name}", pooled["macro_zone_average"][model_name][metric_name])
+            for zone, zone_metrics in pooled["by_zone"].items():
+                for metric_name, value in zone_metrics[model_name].items():
+                    mlflow.log_metric(f"zone_{zone}_{model_name}_{metric_name}", value)
+        weekly_metrics = pooled["weekly_lag_comparison"]
+        mlflow.log_metric("pooled_weekly_lag_available_rows", weekly_metrics["rows"])
+        mlflow.log_metric("pooled_weekly_lag_coverage", weekly_metrics["coverage"])
+        if weekly_metrics["weekly_lag_baseline"] is not None:
+            for metric_name, value in weekly_metrics["weekly_lag_baseline"].items():
+                mlflow.log_metric(f"pooled_weekly_lag_baseline_{metric_name}", value)
+            for metric_name, value in weekly_metrics["model_on_available_rows"].items():
+                mlflow.log_metric(f"pooled_model_on_weekly_lag_rows_{metric_name}", value)
+            for metric_name, value in weekly_metrics["seasonal_baseline_on_available_rows"].items():
+                mlflow.log_metric(f"pooled_seasonal_on_weekly_lag_rows_{metric_name}", value)
+            for zone, zone_metrics in weekly_metrics["by_zone"].items():
+                for method, method_metrics in zone_metrics.items():
+                    if method == "rows":
+                        continue
+                    for metric_name, value in method_metrics.items():
+                        mlflow.log_metric(f"zone_{zone}_weekly_lag_rows_{method}_{metric_name}", value)
+        for fold_result in fold_metrics:
+            for model_name in ("model", "seasonal_baseline"):
+                for metric_name, value in fold_result[model_name].items():
+                    mlflow.log_metric(f"fold_{fold_result['fold_id']:03d}_{model_name}_{metric_name}", value)
+            weekly = fold_result["weekly_lag_comparison"]
+            mlflow.log_metric(f"fold_{fold_result['fold_id']:03d}_weekly_lag_coverage", weekly["coverage"])
+            if weekly["weekly_lag_baseline"] is not None:
+                for method in ("weekly_lag_baseline", "model_on_available_rows", "seasonal_baseline_on_available_rows"):
+                    metrics_key = method if method == "weekly_lag_baseline" else method
+                    for metric_name, value in weekly[metrics_key].items():
+                        mlflow.log_metric(f"fold_{fold_result['fold_id']:03d}_{method}_{metric_name}", value)
+        summary = {
+            "evaluation_strategy": "rolling_origin",
+            "target": TARGET,
+            "feature_set_versions": sorted(data["feature_set_version"].dropna().unique().tolist())
+            if "feature_set_version" in data else [],
+            "series_by_zone": dict(series_by_zone),
+            "source_table": source_table,
+            "source_delta_versions": dict(source_delta_versions or {}),
+            "code_revision": code_revision or os.environ.get("GIT_COMMIT", "unknown"),
+            "rolling_config": {
+                "minimum_train_days": minimum_train_days,
+                "test_window_days": test_window_days,
+                "step_days": step_days,
+                "training_window_days": training_window_days,
+                "training_window_mode": "expanding" if training_window_days == 0 else "fixed_recent_window",
+            },
+            "pooled_metrics": pooled,
+            "folds": fold_metrics,
+        }
+        mlflow.log_dict(summary, "rolling_experiment_summary.json")
+        with tempfile.TemporaryDirectory() as artifact_dir:
+            predictions_path = os.path.join(artifact_dir, "rolling_predictions.csv")
+            predictions.to_csv(predictions_path, index=False)
+            mlflow.log_artifact(predictions_path)
+        return {
+            "run_id": run.info.run_id,
+            "pooled_metrics": pooled,
+            "fold_count": len(folds),
+            "folds": fold_metrics,
+            "feature_importance": (
+                pd.concat(feature_importances, axis=1).fillna(0).mean(axis=1).sort_values(ascending=False).to_dict()
+            ),
+        }
+
 def main() -> None:
     from pyspark.sql import SparkSession
 
@@ -363,6 +676,11 @@ def main() -> None:
     parser.add_argument("--experiment-path", required=True)
     parser.add_argument("--run-name", default="global-lightgbm-baseline")
     parser.add_argument("--code-revision", default=os.environ.get("GIT_COMMIT", "unknown"))
+    parser.add_argument("--evaluation-strategy", choices=("single_split", "rolling_origin"), default="single_split")
+    parser.add_argument("--rolling-minimum-train-days", type=int, default=180)
+    parser.add_argument("--rolling-test-window-days", type=int, default=7)
+    parser.add_argument("--rolling-step-days", type=int, default=7)
+    parser.add_argument("--rolling-training-window-days", type=int, default=0)
     args = parser.parse_args()
     series_by_zone = json.loads(args.series_by_zone)
     if not isinstance(series_by_zone, dict):
@@ -370,7 +688,16 @@ def main() -> None:
     spark = SparkSession.builder.getOrCreate()
     source_versions = gold_source_versions(spark, args.table)
     frame = load_training_frame(spark, args.table, series_by_zone, args.resolution_minutes, source_versions)
-    result = run_experiment(
+    experiment_function = run_rolling_experiment if args.evaluation_strategy == "rolling_origin" else run_experiment
+    experiment_options = {}
+    if args.evaluation_strategy == "rolling_origin":
+        experiment_options = {
+            "minimum_train_days": args.rolling_minimum_train_days,
+            "test_window_days": args.rolling_test_window_days,
+            "step_days": args.rolling_step_days,
+            "training_window_days": args.rolling_training_window_days,
+        }
+    result = experiment_function(
         frame,
         series_by_zone=series_by_zone,
         resolution_minutes=args.resolution_minutes,
@@ -379,8 +706,19 @@ def main() -> None:
         source_table=args.table,
         source_delta_versions=source_versions,
         code_revision=args.code_revision,
+        **experiment_options,
     )
-    print(json.dumps({key: value for key, value in result.items() if key not in {"predictions", "feature_importance"}}, sort_keys=True))
+    if args.evaluation_strategy == "rolling_origin":
+        console_result = {
+            "run_id": result["run_id"],
+            "fold_count": result["fold_count"],
+            "pooled_metrics": result["pooled_metrics"],
+        }
+    else:
+        console_result = {
+            key: value for key, value in result.items() if key not in {"predictions", "feature_importance"}
+        }
+    print(json.dumps(console_result, sort_keys=True))
 
 
 if __name__ == "__main__":

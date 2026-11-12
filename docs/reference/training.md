@@ -38,34 +38,60 @@ There are no weather, load, generation, or flow inputs yet. For `DE_LU`, the
 selected target is sequence 1 (SDAC); sequence 2 (EXAA) is a different auction.
 The target price and its revision metadata are never model inputs.
 
-The comparison baseline is **not** yesterday’s price. It predicts the median
-training price for the same zone, local weekday, and delivery time. Thus a
-Saturday target uses historical Saturdays at that time, not Friday’s price. If
-that group is missing, it falls back to the zone median, then the global median.
-LightGBM receives the same calendar information plus the price lags, but more
-inputs do not guarantee better predictions.
+One benchmark is the seasonal median: the median training price for the same
+zone, local weekday, and delivery hour. It pools across months and years; a
+Saturday target uses earlier Saturdays, not Friday’s price. If that group is
+missing, it falls back to the zone median, then the global median. The second
+benchmark copies the same-series price from 168 elapsed hours earlier. That is
+the one-week-lag naive forecast. LightGBM receives the 168-hour lag as an input
+along with calendar features; it must be evaluated against both benchmarks.
 
-Data is split chronologically by delivery time: 70% train, 15% validation, and
-15% test, using shared cutoffs across zones. The 2026-11-06 run used feature set
-2.0.0 and contained 105,287 train rows, 22,518 validation rows, and 22,772 test
-rows. Training ended before 2026-07-09 06:45 UTC; validation ended before
-2026-09-07 14:30 UTC; the test covered the remaining data through early November.
+The training job uses weekly rolling-origin evaluation. It waits until 180 days
+of history are available, fits one global model, and scores the next seven days.
+It then advances one week, adds earlier labels to training, and fits again. The
+default expanding window keeps all earlier rows; set `rolling_training_window_days`
+to a positive value to restrict each fit to recent history. Test windows do not
+overlap, and each model trains only on earlier delivery intervals.
 
-This is one autumn holdout, not cross-validation or a full seasonal evaluation.
-The model and baseline are scored with mean absolute error (MAE) and root mean
-squared error (RMSE), overall and by zone, month, and price regime. Do not use
-the test period to tune the model.
+Each weekly test window becomes training history for the next fit. The held-out
+weeks together measure this weekly refit policy:
+
+~~~mermaid
+flowchart LR
+    A[180-day warm-up] --> B[Train on past rows]
+    B --> C[Score next 7 days]
+    C --> D[Advance 7 days]
+    D --> E[Add matured history]
+    E --> B
+    C --> F[Pool each held-out prediction once]
+~~~
+
+Pooled MAE and RMSE are computed from every held-out prediction across weeks and
+zones, weighting each row equally. The report also includes a tougher weekly
+naive benchmark: predict the target using its same-series price 168 elapsed
+hours earlier. Because some rows may lack that lag, its coverage is reported,
+and model and median-baseline scores are also computed on exactly the rows where
+the weekly lag exists. Per-zone metrics and weekly fold scores remain available.
+The job logs fold predictions to `rolling_predictions.csv` in MLflow; the
+notebook plots the three prediction series for one selected fold.
+
+This estimates the performance of a policy that retrains each week; it is not
+the score of one model held fixed for the whole history. The historical price-lag
+availability assumption still applies. Treat this as an exploratory backtest,
+and reserve a later untouched period for final evaluation before tuning or
+promotion.
 
 Reusable code is in `eu_electricity_forecast.training`; the unscheduled
-`day_ahead_training` bundle job runs it on serverless. Runs log metrics, source
-Delta versions, and the model to MLflow but do not register a model. The
+`day_ahead_training` bundle job runs it on serverless. Rolling runs log metrics,
+fold summaries, source Delta versions, and predictions to MLflow; they do not
+register a model. The
 `src/notebooks/model_training_experiment.ipynb` notebook loads the latest
-completed run and rebuilds its held-out predictions from the recorded Delta
-versions, then plots actual, LightGBM, and baseline prices for all zones. It
-does not retrain the model or require manual auction-series IDs.
+completed run and plots actual prices, LightGBM predictions, the seasonal
+median, and the 168-hour lag for one selected held-out week. It does not retrain
+the model or require manual auction-series IDs.
 
-The 2026-11-06 feature set 2.0.0 run beat the seasonal baseline on validation and
-test:
+The earlier single-split experiment on feature set 2.0.0 beat the seasonal
+baseline on validation and test:
 
 | Split | Rows | Model MAE | Baseline MAE | Model RMSE | Baseline RMSE |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -74,10 +100,10 @@ test:
 
 All metrics are in €/MWh. Test MAE was lower for LightGBM in each zone: DE_LU
 62.25 vs 89.22, FR 62.20 vs 109.96, LT 77.30 vs 83.33, and NL 60.72 vs 91.24.
-November was the hardest test month (MAE 109.95 vs 168.62). These results are
-promising for this split, but do not establish performance across seasons. The
-historical lag availability assumption described in the [Gold reference](gold.md)
-also applies to this run. [View the MLflow run](https://dbc-b0577817-50e1.cloud.databricks.com/ml/experiments/4359392245988199/runs/3208d46a10134982a5ed8295a5b5939c).
+November was the hardest test month (MAE 109.95 vs 168.62). These results
+describe one holdout only, not performance across seasons. Read new rolling
+results from their MLflow run. The historical lag availability assumption
+described in the [Gold reference](gold.md) also applies.
 
 A one-week-ahead model remains a sensible target. It will require training
 examples with issue times up to seven days before delivery, plus weather and

@@ -72,6 +72,8 @@ naive benchmark: predict the target using its same-series price 168 elapsed
 hours earlier. Because some rows may lack that lag, its coverage is reported,
 and model and median-baseline scores are also computed on exactly the rows where
 the weekly lag exists. Per-zone metrics and weekly fold scores remain available.
+Relative MAE (`model MAE / weekly-baseline MAE`) is planned; it will use those
+same lag-available rows, so values below 1 mean the model beats the benchmark.
 The job logs fold predictions to `rolling_predictions.csv` in MLflow; the
 notebook plots the three prediction series for one selected fold.
 

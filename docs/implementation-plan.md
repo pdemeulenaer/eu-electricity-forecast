@@ -27,7 +27,7 @@ and controlled retraining. Detailed layer responsibilities are in the
 | 3 | Shared client, backfill, polling, immutable files | Implemented and run in Databricks |
 | 4 | Bronze ingestion and Silver normalization | Running in the project catalog |
 | 5 | Gold historical features and labels | Feature set 2.0.0 rebuilt and checked in Databricks |
-| 6 | Baselines, global model, MLflow experiment | Weekly rolling evaluation implemented locally; workspace run pending |
+| 6 | Baselines, global model, MLflow experiment | Prior rolling run predates the 168-hour baseline; redeploy and rerun to evaluate it |
 | 7 | Scoring and delayed-label reconciliation | Planned |
 | 8 | Drift and quality monitoring | Planned |
 | 9 | Retraining gates and model promotion | Planned |
@@ -82,10 +82,12 @@ The first offline experiment is complete. It used 15-minute A01 prices in all
 four zones, Sequence 1 (SDAC) for DE_LU, one global LightGBM model, and a
 calendar-and-zone seasonal baseline. It used shared chronological splits and
 feature set 2.0.0; results are in the [training reference](reference/training.md).
-The manual training job now runs fixed-parameter weekly rolling backtests across
-the available history. Verify its first workspace run and compare results by
-fold and zone. Keep the model as an experiment; the training job does not
-register it.
+The manual training job runs fixed-parameter weekly rolling backtests across
+the available history. The first workspace run completed before the 168-hour
+naive benchmark was added. Next, redeploy and rerun, then compare results by fold
+and zone. Add relative MAE against that weekly benchmark as a planned metric,
+computed on the same rows where its lag is available. Keep the model as an
+experiment; the training job does not register it.
 Later CI/CD can register a challenger and promote it only after evaluation against
 the Champion (or an initial acceptance gate when no Champion exists). Use the
 notebook for interactive exploration; model and evaluation code is in

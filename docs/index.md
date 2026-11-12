@@ -37,7 +37,7 @@ flowchart TB
 | Poller, backfill, immutable landing | Implemented and run in Databricks |
 | Scheduled poll, Bronze, Silver | Running in the project catalog |
 | Gold features and labels | Running; feature set 2.0.0 includes historical price lags |
-| Global model training | Weekly rolling evaluation implemented locally; workspace run pending |
+| Global model training | Prior rolling run predates the 168-hour baseline; redeploy and rerun to evaluate it |
 | Inference, monitoring, retraining | Planned |
 
 The MVP predicts next-day auction prices before publication. Historical replay will

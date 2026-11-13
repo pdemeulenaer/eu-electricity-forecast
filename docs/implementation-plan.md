@@ -2,7 +2,8 @@
 
 Build a Databricks pipeline from ENTSO-E ingestion through forecasting, monitoring,
 and controlled retraining. Detailed layer responsibilities are in the
-[architecture guide](architecture/index.md).
+[architecture guide](architecture/index.md). The
+[end-to-end MLOps diagram](architecture/mlops.md) shows how the planned jobs connect.
 
 ## Decisions
 
@@ -28,10 +29,12 @@ and controlled retraining. Detailed layer responsibilities are in the
 | 4 | Bronze ingestion and Silver normalization | Running in the project catalog |
 | 5 | Gold historical features and labels | Feature set 2.0.0 rebuilt and checked in Databricks |
 | 6 | Baselines, global model, MLflow experiment | Prior rolling run predates the 168-hour baseline; redeploy and rerun to evaluate it |
-| 7 | Scoring and delayed-label reconciliation | Planned |
-| 8 | Drift and quality monitoring | Planned |
-| 9 | Retraining gates and model promotion | Planned |
-| 10 | Replay demo, CI, and operational readiness | Planned |
+| 7 | Environment isolation and CI/CD | Planned; dev/prod currently share the project catalog |
+| 8 | Deployable candidate, registry, and promotion | Planned; rolling evaluation logs no deployable model |
+| 9 | Future features, inference, and delayed-label evaluation | Planned |
+| 10 | Data quality, drift, and performance monitoring | Planned |
+| 11 | Controlled retraining and rollback | Planned |
+| 12 | Replay demo and operational readiness | Planned |
 
 The scheduled ingestion pipeline runs through Gold in the project catalog. Its
 feature builder uses latest historical prices for 24-hour and 168-hour lags; the
@@ -95,28 +98,42 @@ notebook for interactive exploration; model and evaluation code is in
 job runs the same entry point for repeatable evaluation. Keep it unscheduled until
 monitoring and Champion/Challenger CI/CD promotion gates are implemented.
 
-### 7. Score and evaluate
-Write immutable predictions linked to the model and feature snapshot. Join labels
-only after they mature; retain revised labels separately and make reruns idempotent.
+## Next delivery order
 
-### 8. Monitor
-Track ingestion health, freshness, coverage, feature drift, and rolling error on
-mature labels. Calibrate thresholds by replay; drift alone does not promote a model.
+These steps are planned. Keep production schedules disabled until environment
+isolation and the required checks are in place. Each delivery should work manually
+in dev before its production automation is enabled.
 
-### 9. Retrain and promote
-Trigger a job from fresh monitoring metrics. Train and compare a candidate on a
-recent chronological holdout; promote only if aggregate and per-zone gates pass.
-Record decisions and preserve rollback to the previous Champion.
+| Step | Deliver | Completion check |
+| --- | --- | --- |
+| **7. Environments and CI/CD** | Separate catalogs for dev/staging/prod, each with landing/bronze/silver/gold. Add GitHub Actions for tests, docs, wheel build, bundle validation, and deployment. Use service identities and a protected production release. | A reviewed commit and the same built wheel reach staging; its smoke run cannot write to prod. Production deployment needs approval. |
+| **8. Candidate and registry** | Keep rolling backtests for policy evaluation. Add a candidate fit with packaged preprocessing, signature, dependencies, code revision, and pinned data versions. Register in Unity Catalog and record promotion decisions. | The saved candidate reloads and reproduces predictions. It passes the agreed holdout gates before becoming Champion. The previous version remains available. |
+| **9. Inference and evaluation** | Generate future quarter-hour rows without target prices. Save issue-time feature snapshots; score a pinned Champion version daily into Gold predictions. Join labels when available and refresh after corrections. | All four zones have a complete next-local-day curve: 92/96/100 slots as applicable. Repeating a run creates no duplicates or silent replacement of issued forecasts. Evaluation reports label coverage. |
+| **10. Monitoring** | Add freshness, completeness, feature drift, and labelled MAE/RMSE by zone/model. Compare with seasonal and weekly benchmarks; add dashboards and alerts. | Replay demonstrates a missing-data alert, a feature-shift alert, and a performance alert. Sparse labels cannot trigger a false retraining decision. |
+| **11. Retraining loop** | Add periodic and monitor-triggered candidate requests with a cooldown, minimum samples, and one active run. Route every candidate through the same evaluation and promotion gates. | A good candidate can be promoted, a bad one is rejected, and rollback restores the prior Champion. Retries do not create repeated promotions. |
+| **12. Demo and operations** | Add a repeatable replay scenario, runbooks, retention, cost limits, and historical correction requerying. | Demonstrate ingestion → forecast → delayed evaluation → alert → candidate → promotion/rejection, with code, data, and model lineage. |
 
-### 10. Demo and production checks
-Replay historical data by availability time, then demonstrate drift, evaluation,
-and promotion or rejection. Add tests and CI for parser, revisions, DST, leakage,
-idempotency, delayed labels, and rollback. Validate workspace permissions,
-network egress, monitoring availability, service identity, retention, and cost.
+### Promotion gates
 
-## Suggested delivery slices
+Agree thresholds before using the final evaluation period. Compare candidate,
+Champion, and benchmarks on the same rows, with aggregate and per-zone checks.
+Require all four zones, adequate label and lag coverage, acceptable MAE/RMSE, and
+no unacceptable regional regression. When no Champion exists, use the benchmarks
+and an initial acceptance gate. Relative MAE against the 168-hour benchmark remains
+planned.
 
-1. Finish source contract, deploy ingestion, and validate Bronze/Silver.
-2. Build historical features, baselines, and model evaluation.
-3. Add incremental scoring and delayed-label evaluation.
-4. Add monitoring, retraining gates, replay, and production checks.
+Tune hyperparameters on earlier rolling validation windows; keep a later period
+untouched for final acceptance. Registering a version does not make it production:
+promotion selects the approved artifact, without a hidden refit afterward.
+
+### Operational safeguards
+
+Keep issued forecast inputs and predictions separate from the historical Gold
+table that is overwritten today. Apply live issue-time availability checks to
+features; retain the documented historical lag assumption for backtests. Include
+DST, auction identity, missing data, reruns, delayed labels, and rollback in checks.
+
+Use data profiling where supported for managed statistics and project tables for
+benchmark and delayed-label metrics. Historical demo dates need an explicit replay
+clock and compatible metric refresh windows; downloading history today does not
+recover its original publication timestamps.

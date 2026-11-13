@@ -20,5 +20,14 @@ permissions and the ENTSO-E secret are available to the job identity. See the
 [ingestion guide](../entsoe-ingestion.md) for file layout and replay behavior.
 
 Run the four-zone training and evaluation job manually with
-`databricks bundle run day_ahead_training -t dev --profile dev`. It logs an MLflow
-experiment and model artifact; it does not register or promote a model.
+`databricks bundle run day_ahead_training -t dev --profile dev`. The default
+rolling run logs MLflow metrics and prediction files; it does not produce a
+deployable model, register it, or promote it.
+
+## Planned releases and model operations
+
+Deployments are currently manual. Automated environment delivery, model
+registration/promotion, daily inference, and monitoring are described in the
+[end-to-end MLOps flow](../architecture/mlops.md) and
+[delivery plan](../implementation-plan.md#next-delivery-order).
+The existing dev/prod targets share a catalog; isolate them before production use.

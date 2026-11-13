@@ -6,28 +6,20 @@ A Databricks project for forecasting day-ahead electricity prices from ENTSO-E d
 
 ~~~mermaid
 flowchart TB
-    subgraph INGESTION[Ingestion]
+    subgraph INGESTION[Running data pipeline]
         direction LR
-        A[ENTSO-E API] --> B[Poll and replay]
-        B --> C[Immutable landing files]
-        C --> D[Auto Loader Bronze]
+        A[ENTSO-E API] --> B[Landing volume] --> C[Bronze]
     end
-    subgraph FORECAST[Features and forecasting]
+    subgraph FEATURES[Historical training data]
         direction LR
-        E[Silver observations] --> F[Gold feature tables]
-        F --> G[Global price model]
-        G --> H[Gold prediction log]
+        D[Silver] --> E[Gold features and labels]
     end
-    subgraph MONITOR[Monitoring and retraining]
-        direction LR
-        I[Delayed labels] --> J[Gold evaluation and monitoring]
-        J --> K[Train and evaluate candidate]
-        K --> L[Promote model]
-    end
-    D --> E
-    H --> I
-    L -. New version .-> G
+    INGESTION --> FEATURES
 ~~~
+
+See the [end-to-end MLOps flow](architecture/mlops.md) for training, the model
+registry, environment delivery, inference, and monitored retraining. It marks
+what runs today and what remains planned.
 
 ## Status
 
@@ -38,6 +30,8 @@ flowchart TB
 | Scheduled poll, Bronze, Silver | Running in the project catalog |
 | Gold features and labels | Running; feature set 2.0.0 includes historical price lags |
 | Global model training | Prior rolling run predates the 168-hour baseline; redeploy and rerun to evaluate it |
+| Model registration and promotion | Planned |
+| CI/CD and environment isolation | Planned; current dev/prod targets share the project catalog |
 | Inference, monitoring, retraining | Planned |
 
 The MVP predicts next-day auction prices before publication. Historical replay will

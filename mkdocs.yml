@@ -68,6 +68,7 @@ nav:
       - ENTSO-E ingestion: entsoe-ingestion.md
   - Architecture:
       - architecture/index.md
+      - End-to-end MLOps: architecture/mlops.md
   - Operations:
       - operations/index.md
       - Implementation plan: implementation-plan.md

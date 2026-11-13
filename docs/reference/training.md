@@ -110,3 +110,10 @@ described in the [Gold reference](gold.md) also applies.
 A one-week-ahead model remains a sensible target. It will require training
 examples with issue times up to seven days before delivery, plus weather and
 other forecast inputs matched to the version available at each issue time.
+
+## Next: a deployable model
+
+Rolling evaluation measures a refitting policy and currently logs no deployable
+model. A separate candidate fit, Unity Catalog registration, and Champion
+promotion gate are planned. See the [end-to-end MLOps flow](../architecture/mlops.md);
+daily inference and monitoring will consume the approved model version.

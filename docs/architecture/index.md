@@ -3,20 +3,9 @@
 The pipeline predicts next-day auction prices before publication. Historical replay
 uses the same path to demonstrate streaming and retraining.
 
-~~~mermaid
-flowchart TB
-    A[ENTSO-E API] --> B[Poller and backfill]
-    B --> C[Volume landing]
-    C --> D[Bronze]
-    D --> E[Silver]
-    E --> F[Gold feature tables]
-    F --> G[Global model]
-    G --> H[Gold predictions]
-    E --> I[Mature price labels]
-    H --> I
-    I --> J[Gold evaluation and monitoring]
-    J --> G
-~~~
+The [end-to-end MLOps flow](mlops.md) connects the data pipeline to training,
+model registration, code delivery, inference, and monitoring, with current and
+planned components marked.
 
 ## Medallion layers
 
@@ -25,7 +14,7 @@ flowchart TB
 | Landing | Immutable XML, JSONL observations, and request metadata in a Volume | Running in the project catalog |
 | Bronze | Append-only, source-shaped observations | Running in the project catalog |
 | Silver | Typed prices, load, generation, forecasts, and flows | Running in the project catalog |
-| Gold | Forecast features, predictions, evaluation, and monitoring data | Feature set 2.0.0 built; first model run completed |
+| Gold | Forecast features, predictions, evaluation, and monitoring data | Features and labels running; prediction and monitoring outputs planned |
 
 Gold is the business-consumption layer. It contains model inputs and outputs in
 separate tables. Historical price lags use an explicit availability assumption;
@@ -55,14 +44,14 @@ flow values remain missing.
 
 Gold tables:
 
-| Table | Row grain | Use |
+| Table | Row grain | Use / status |
 | --- | --- | --- |
 | day_ahead_features | Issue time, zone, target interval, target auction | Historical training rows; future inference rows to follow |
 | day_ahead_price_labels | Zone, target interval, target auction | Latest known target price and revision metadata |
 | day_ahead_training_data | Feature row joined to its target label | Training view; label excluded from predictor columns |
-| price_predictions | Issue time, zone, target interval, model version | Forecast consumers |
-| forecast_evaluation | Prediction identity and matured label | MAE/RMSE and label tracking |
-| monitoring_metrics | Metric window and zone/model slice | Drift and retraining decisions |
+| price_predictions | Issue time, zone, target interval, auction, model version | Forecast consumers; planned |
+| forecast_evaluation | Prediction identity and matured label | MAE/RMSE and label tracking; planned |
+| monitoring_metrics | Metric window and zone/model slice | Drift and retraining decisions; planned |
 
 `gold.day_ahead_features` is one wide row per forecast issue, bidding zone,
 delivery interval, and auction series. It contains the following versioned inputs:
@@ -107,9 +96,10 @@ source files and Auto Loader state; Bronze observations go to
 `bronze.bronze_entsoe_observations`. The Silver tables and Gold feature, label, and
 training-view objects use their matching schemas.
 
-The project catalog is `eu_electricity_forecast`, with `landing`, `bronze`,
-`silver`, and `gold` schemas. The hourly ingestion job rebuilds Gold features
-after Silver normalization.
+The hourly ingestion job rebuilds Gold features after Silver normalization.
+Dev and prod currently reference this same catalog. Separate environment catalogs
+and a registered model in Gold are [planned](mlops.md#code-delivery-and-environments-planned);
+the four-schema structure stays the same.
 
 See Databricks guidance on [medallion architecture](https://docs.databricks.com/gcp/en/lakehouse/medallion),
 [Unity Catalog organization](https://docs.databricks.com/aws/en/lakehouse-architecture/data-governance/best-practices),

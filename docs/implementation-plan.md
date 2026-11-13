@@ -100,14 +100,17 @@ monitoring and Champion/Challenger CI/CD promotion gates are implemented.
 
 ## Next delivery order
 
+The detailed [environment and release plan](environment-release-plan.md) covers
+steps 7 and 8, including catalog access, CI checks, QA approval, and model promotion.
+
 These steps are planned. Keep production schedules disabled until environment
 isolation and the required checks are in place. Each delivery should work manually
 in dev before its production automation is enabled.
 
 | Step | Deliver | Completion check |
 | --- | --- | --- |
-| **7. Environments and CI/CD** | Separate catalogs for dev/staging/prod, each with landing/bronze/silver/gold. Add GitHub Actions for tests, docs, wheel build, bundle validation, and deployment. Use service identities and a protected production release. | A reviewed commit and the same built wheel reach staging; its smoke run cannot write to prod. Production deployment needs approval. |
-| **8. Candidate and registry** | Keep rolling backtests for policy evaluation. Add a candidate fit with packaged preprocessing, signature, dependencies, code revision, and pinned data versions. Register in Unity Catalog and record promotion decisions. | The saved candidate reloads and reproduces predictions. It passes the agreed holdout gates before becoming Champion. The previous version remains available. |
+| **7. Environments and CI/CD** | Separate dev/QA/prod catalogs, each with landing/bronze/silver/gold and ml_models schemas. Add branch-based CI and QA-to-production delivery with service identities and protected releases. | QA tests the proposed release and cannot write to prod. An approved, matching release reaches production. |
+| **8. Candidate and registry** | Keep rolling backtests for policy evaluation. Add a candidate fit with packaged preprocessing, signature, dependencies, code revision, and pinned data versions. Register the QA candidate in Unity Catalog and record promotion decisions. | After approval and merge, the evaluated QA artifact is copied to prod and assigned `@prod`. The saved candidate reloads and reproduces predictions. The previous version remains available. |
 | **9. Inference and evaluation** | Generate future quarter-hour rows without target prices. Save issue-time feature snapshots; score a pinned Champion version daily into Gold predictions. Join labels when available and refresh after corrections. | All four zones have a complete next-local-day curve: 92/96/100 slots as applicable. Repeating a run creates no duplicates or silent replacement of issued forecasts. Evaluation reports label coverage. |
 | **10. Monitoring** | Add freshness, completeness, feature drift, and labelled MAE/RMSE by zone/model. Compare with seasonal and weekly benchmarks; add dashboards and alerts. | Replay demonstrates a missing-data alert, a feature-shift alert, and a performance alert. Sparse labels cannot trigger a false retraining decision. |
 | **11. Retraining loop** | Add periodic and monitor-triggered candidate requests with a cooldown, minimum samples, and one active run. Route every candidate through the same evaluation and promotion gates. | A good candidate can be promoted, a bad one is rejected, and rollback restores the prior Champion. Retries do not create repeated promotions. |

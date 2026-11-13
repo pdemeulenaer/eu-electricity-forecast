@@ -72,6 +72,7 @@ nav:
   - Operations:
       - operations/index.md
       - Implementation plan: implementation-plan.md
+      - Environments and releases: environment-release-plan.md
   - Code reference:
       - reference/index.md
       - API client: reference/entsoe.md

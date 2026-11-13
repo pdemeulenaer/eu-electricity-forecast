@@ -98,7 +98,7 @@ training-view objects use their matching schemas.
 
 The hourly ingestion job rebuilds Gold features after Silver normalization.
 Dev and prod currently reference this same catalog. Separate environment catalogs
-and a registered model in Gold are [planned](mlops.md#code-delivery-and-environments-planned);
+and registered models in an `ml_models` schema are [planned](mlops.md#code-delivery-and-environments-planned);
 the four-schema structure stays the same.
 
 See Databricks guidance on [medallion architecture](https://docs.databricks.com/gcp/en/lakehouse/medallion),

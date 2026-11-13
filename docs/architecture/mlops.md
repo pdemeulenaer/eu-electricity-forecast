@@ -54,7 +54,8 @@ workspace run. See the [training reference](../reference/training.md).
 
 **Tracking records an experiment. Registration gives a saved model a version.
 Promotion chooses which version inference uses.** A registered candidate is a
-Challenger; the approved version is the Champion. Use Unity Catalog aliases,
+Challenger; the approved production version is the Champion, selected by the
+`@prod` alias. Models live in each catalog’s `ml_models` schema. Use Unity Catalog aliases,
 rather than the old Staging/Production registry stages.
 [Databricks model lifecycle](https://docs.databricks.com/aws/en/machine-learning/manage-model-lifecycle/)
 
@@ -66,42 +67,35 @@ Promotion keeps the evaluated artifact; it must not silently refit it.
 
 ## Code delivery and environments — planned
 
+Feature changes pass CI before merging into `develop`. A pull request from
+`develop` to `main` deploys and tests the proposed release in QA. Stakeholder
+approval allows the pull request to merge; the resulting `main` commit is then
+released to production. Dev deployments remain manual.
+
 ~~~mermaid
-%%{init: {'flowchart': {'nodeSpacing': 20, 'rankSpacing': 30, 'padding': 10, 'subGraphTitleMargin': {'top': 5, 'bottom': 12}}}}%%
 flowchart TB
-    subgraph CHECK["Continuous integration · every pull request"]
+    subgraph CHANGE["Feature development"]
         direction LR
-        CHANGE[Python and bundle<br/>changes in Git] --> CI[Tests, docs build<br/>and bundle validation]
+        FEATURE[Feature branch] -->|Pull request| CI[CI checks]
+        CI -->|Review and merge| DEVELOP[develop]
     end
-    subgraph RELEASE["Continuous delivery · reviewed release"]
+    subgraph RELEASE["Release"]
         direction LR
-        DEV[Dev deployment] --> STAGE[Staging deployment<br/>and smoke run]
-        STAGE --> APPROVE[Production approval] --> PROD[Prod deployment]
+        PR[develop → main pull request] --> QA[Deploy and test in QA]
+        QA --> REVIEW[Stakeholder review]
+        REVIEW -->|Approve and merge| MAIN[main]
+        MAIN --> PROD[Deploy production<br/>and create version tag]
     end
-    CHECK -->|Reviewed commit and built wheel| RELEASE
+    DEVELOP --> PR
     classDef default fill:#eff6ff,stroke:#2563eb,color:#1e3a8a,stroke-width:2px,stroke-dasharray:6 4;
 ~~~
 
-Proposed implementation: GitHub Actions builds a versioned wheel, runs checks,
-then deploys the bundle and the same wheel through dev, staging, and prod.
-Use a service identity with workload identity federation. Keep permission to
-deploy code separate from permission to change the Champion alias.
-[Databricks CI/CD example](https://docs.databricks.com/aws/en/dev-tools/ci-cd/github)
-
-**The current dev and prod targets share the same project catalog.** They are
-not isolated data environments. Configure separate catalogs before production
-delivery, keeping the four agreed schemas in each:
-
-| Environment | Proposed catalog | Schemas |
-| --- | --- | --- |
-| Dev, existing | `eu_electricity_forecast` | `landing`, `bronze`, `silver`, `gold` |
-| Staging, new | `eu_electricity_forecast_staging` | Same four schemas |
-| Prod, new | `eu_electricity_forecast_prod` | Same four schemas |
-
-Keep the registered model in `<catalog>.gold.day_ahead_price_model`. Copy the
-evaluated artifact between environment registries, recording its source run and
-version. A code release deploys jobs; a separate recorded decision moves the
-Champion alias. Retraining can propose a model without a code release.
+Dev and QA jobs can read their own data or selected production data; they always
+write to their own catalog. Production jobs read and write production. Unity
+Catalog permissions must enforce these rules, not just bundle configuration.
+The current dev and prod bundle targets share one catalog; QA does not exist yet.
+See the [environment and release plan](../environment-release-plan.md) for the
+proposed names, tests, approvals, and model registry flow.
 
 ## Forecasts and monitoring — planned
 

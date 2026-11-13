@@ -117,3 +117,7 @@ Rolling evaluation measures a refitting policy and currently logs no deployable
 model. A separate candidate fit, Unity Catalog registration, and Champion
 promotion gate are planned. See the [end-to-end MLOps flow](../architecture/mlops.md);
 daily inference and monitoring will consume the approved model version.
+
+Planned: log the package version, Git commit, and build identity for every
+training run, and attach them to registered model versions. See the
+[code version and model lineage plan](../environment-release-plan.md#code-version-and-model-lineage).

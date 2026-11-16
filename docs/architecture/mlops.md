@@ -93,7 +93,8 @@ flowchart TB
 Dev and QA jobs can read their own data or selected production data; they always
 write to their own catalog. Production jobs read and write production. Unity
 Catalog permissions must enforce these rules, not just bundle configuration.
-The current dev and prod bundle targets share one catalog; QA does not exist yet.
+Separate catalog names for dev, QA, and prod are configured locally; QA and prod
+have not been deployed, and service identities and grants remain to be set up.
 See the [environment and release plan](../environment-release-plan.md) for the
 proposed names, tests, approvals, and model registry flow.
 

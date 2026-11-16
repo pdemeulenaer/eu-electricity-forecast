@@ -11,6 +11,11 @@ resources:
           interval: 1
           unit: HOURS
       max_concurrent_runs: 1
+      parameters:
+        - name: bronze_input_catalog
+          default: ${var.project_catalog}
+        - name: silver_input_catalog
+          default: ${var.project_catalog}
       tasks:
         - task_key: poll_entsoe
           python_wheel_task:
@@ -54,6 +59,12 @@ resources:
             parameters:
               - --catalog
               - ${var.project_catalog}
+              - --environment
+              - ${bundle.target}
+              - --production-catalog
+              - ${var.production_catalog}
+              - --input-catalog
+              - "{{job.parameters.bronze_input_catalog}}"
               - --bronze-schema
               - ${var.bronze_schema}
               - --silver-schema
@@ -69,6 +80,12 @@ resources:
             parameters:
               - --catalog
               - ${var.project_catalog}
+              - --environment
+              - ${bundle.target}
+              - --production-catalog
+              - ${var.production_catalog}
+              - --input-catalog
+              - "{{job.parameters.silver_input_catalog}}"
               - --silver-schema
               - ${var.silver_schema}
               - --gold-schema

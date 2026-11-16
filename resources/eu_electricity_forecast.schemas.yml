@@ -2,17 +2,31 @@ resources:
   schemas:
     landing:
       name: ${var.landing_schema}
-      catalog_name: ${resources.catalogs.electricity_forecast.name}
+      catalog_name: ${var.project_catalog}
+      lifecycle:
+        prevent_destroy: true
       comment: Immutable ENTSO-E source files and Auto Loader state
     bronze:
       name: ${var.bronze_schema}
-      catalog_name: ${resources.catalogs.electricity_forecast.name}
+      catalog_name: ${var.project_catalog}
+      lifecycle:
+        prevent_destroy: true
       comment: Append-only source-shaped ENTSO-E observations
     silver:
       name: silver
-      catalog_name: ${resources.catalogs.electricity_forecast.name}
+      catalog_name: ${var.project_catalog}
+      lifecycle:
+        prevent_destroy: true
       comment: Validated and typed electricity market observations
     gold:
       name: gold
-      catalog_name: ${resources.catalogs.electricity_forecast.name}
+      catalog_name: ${var.project_catalog}
+      lifecycle:
+        prevent_destroy: true
       comment: Curated features, forecasts, evaluation, and monitoring outputs
+    ml_models:
+      name: ml_models
+      catalog_name: ${var.project_catalog}
+      lifecycle:
+        prevent_destroy: true
+      comment: Registered electricity forecasting models

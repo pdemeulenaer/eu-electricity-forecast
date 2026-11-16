@@ -1,0 +1,65 @@
+# Create new environment catalogs using serverless default storage. The schema
+# comments reference the run result so the direct engine waits for the job.
+targets:
+  qa:
+    resources:
+      jobs:
+        provision_catalog:
+          name: ${bundle.name}-provision-catalog
+          performance_target: STANDARD
+          tasks:
+            - task_key: create_catalog
+              notebook_task:
+                notebook_path: ../src/notebooks/provision_catalog.py
+                base_parameters:
+                  catalog: ${var.project_catalog}
+                  writer: ${var.qa_principal}
+                  readers_json: '["${var.dev_user}"]'
+      job_runs:
+        provision_catalog_run:
+          job_id: ${resources.jobs.provision_catalog.id}
+          lifecycle:
+            triggers:
+              - on_bundle_deploy: true
+      schemas:
+        landing:
+          comment: "Catalog provisioning run: ${resources.job_runs.provision_catalog_run.state.result_state}"
+        bronze:
+          comment: "Catalog provisioning run: ${resources.job_runs.provision_catalog_run.state.result_state}"
+        silver:
+          comment: "Catalog provisioning run: ${resources.job_runs.provision_catalog_run.state.result_state}"
+        gold:
+          comment: "Catalog provisioning run: ${resources.job_runs.provision_catalog_run.state.result_state}"
+        ml_models:
+          comment: "Catalog provisioning run: ${resources.job_runs.provision_catalog_run.state.result_state}"
+  prod:
+    resources:
+      jobs:
+        provision_catalog:
+          name: ${bundle.name}-provision-catalog
+          performance_target: STANDARD
+          tasks:
+            - task_key: create_catalog
+              notebook_task:
+                notebook_path: ../src/notebooks/provision_catalog.py
+                base_parameters:
+                  catalog: ${var.project_catalog}
+                  writer: ${var.prod_principal}
+                  readers_json: '["${var.dev_user}", "${var.qa_principal}"]'
+      job_runs:
+        provision_catalog_run:
+          job_id: ${resources.jobs.provision_catalog.id}
+          lifecycle:
+            triggers:
+              - on_bundle_deploy: true
+      schemas:
+        landing:
+          comment: "Catalog provisioning run: ${resources.job_runs.provision_catalog_run.state.result_state}"
+        bronze:
+          comment: "Catalog provisioning run: ${resources.job_runs.provision_catalog_run.state.result_state}"
+        silver:
+          comment: "Catalog provisioning run: ${resources.job_runs.provision_catalog_run.state.result_state}"
+        gold:
+          comment: "Catalog provisioning run: ${resources.job_runs.provision_catalog_run.state.result_state}"
+        ml_models:
+          comment: "Catalog provisioning run: ${resources.job_runs.provision_catalog_run.state.result_state}"

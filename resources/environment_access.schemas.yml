@@ -1,0 +1,79 @@
+# Catalog usage is granted by the provisioning notebook.
+# Schema grants apply to current and future objects within each schema.
+targets:
+  qa:
+    resources:
+      schemas:
+        landing:
+          grants:
+            - principal: ${var.dev_user}
+              privileges: [USE_SCHEMA, READ_VOLUME]
+            - principal: ${var.qa_principal}
+              privileges: [USE_SCHEMA, READ_VOLUME, WRITE_VOLUME]
+        bronze:
+          grants:
+            - principal: ${var.dev_user}
+              privileges: [USE_SCHEMA, SELECT]
+            - principal: ${var.qa_principal}
+              privileges: [USE_SCHEMA, CREATE_TABLE, SELECT, MODIFY]
+        silver:
+          grants:
+            - principal: ${var.dev_user}
+              privileges: [USE_SCHEMA, SELECT]
+            - principal: ${var.qa_principal}
+              privileges: [USE_SCHEMA, CREATE_TABLE, SELECT, MODIFY]
+        gold:
+          grants:
+            - principal: ${var.dev_user}
+              privileges: [USE_SCHEMA, SELECT]
+            - principal: ${var.qa_principal}
+              privileges: [USE_SCHEMA, CREATE_TABLE, SELECT, MODIFY]
+        ml_models:
+          grants:
+            - principal: ${var.dev_user}
+              privileges: [USE_SCHEMA, EXECUTE]
+            - principal: ${var.qa_principal}
+              privileges: [USE_SCHEMA, CREATE_MODEL, EXECUTE]
+  prod:
+    resources:
+      schemas:
+        landing:
+          grants:
+            - principal: ${var.prod_principal}
+              privileges: [USE_SCHEMA, READ_VOLUME, WRITE_VOLUME]
+            - principal: ${var.dev_user}
+              privileges: [USE_SCHEMA, READ_VOLUME]
+            - principal: ${var.qa_principal}
+              privileges: [USE_SCHEMA, READ_VOLUME]
+        bronze:
+          grants:
+            - principal: ${var.prod_principal}
+              privileges: [USE_SCHEMA, CREATE_TABLE, SELECT, MODIFY]
+            - principal: ${var.dev_user}
+              privileges: [USE_SCHEMA, SELECT]
+            - principal: ${var.qa_principal}
+              privileges: [USE_SCHEMA, SELECT]
+        silver:
+          grants:
+            - principal: ${var.prod_principal}
+              privileges: [USE_SCHEMA, CREATE_TABLE, SELECT, MODIFY]
+            - principal: ${var.dev_user}
+              privileges: [USE_SCHEMA, SELECT]
+            - principal: ${var.qa_principal}
+              privileges: [USE_SCHEMA, SELECT]
+        gold:
+          grants:
+            - principal: ${var.prod_principal}
+              privileges: [USE_SCHEMA, CREATE_TABLE, SELECT, MODIFY]
+            - principal: ${var.dev_user}
+              privileges: [USE_SCHEMA, SELECT]
+            - principal: ${var.qa_principal}
+              privileges: [USE_SCHEMA, SELECT]
+        ml_models:
+          grants:
+            - principal: ${var.prod_principal}
+              privileges: [USE_SCHEMA, CREATE_MODEL, EXECUTE]
+            - principal: ${var.dev_user}
+              privileges: [USE_SCHEMA, EXECUTE]
+            - principal: ${var.qa_principal}
+              privileges: [USE_SCHEMA, EXECUTE]

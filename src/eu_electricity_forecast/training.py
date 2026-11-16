@@ -356,6 +356,22 @@ def _weekly_lag_comparison(scored):
     }
 
 
+def _log_code_provenance(mlflow, code_revision=None):
+    """Record the installed package version and available build identifiers."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        package_version = version("eu-electricity-forecast")
+    except PackageNotFoundError:
+        package_version = "unknown"
+    mlflow.set_tags({
+        "code.package_version": package_version,
+        "code.git_commit": code_revision or os.environ.get("GIT_COMMIT", "unknown"),
+        "code.wheel_sha256": os.environ.get("WHEEL_SHA256", "unknown"),
+        "code.environment": os.environ.get("DEPLOYMENT_ENVIRONMENT", "unknown"),
+    })
+
+
 def run_experiment(
     frame,
     *,
@@ -418,6 +434,7 @@ def run_experiment(
     mlflow.set_registry_uri("databricks-uc")
     mlflow.set_experiment(experiment_path)
     with mlflow.start_run(run_name=run_name) as run:
+        _log_code_provenance(mlflow, code_revision)
         mlflow.log_params(
             {
                 "model": "lightgbm.LGBMRegressor",
@@ -579,6 +596,7 @@ def run_rolling_experiment(
     mlflow.set_registry_uri("databricks-uc")
     mlflow.set_experiment(experiment_path)
     with mlflow.start_run(run_name=run_name) as run:
+        _log_code_provenance(mlflow, code_revision)
         mlflow.log_params(
             {
                 "evaluation_strategy": "rolling_origin",
@@ -671,6 +689,9 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--table", required=True, help="Three-part Gold training view name")
+    parser.add_argument("--environment", choices=("dev", "qa", "prod"))
+    parser.add_argument("--output-catalog", help="The catalog belonging to this job's environment")
+    parser.add_argument("--production-catalog", default="eu_electricity_forecast_prod")
     parser.add_argument("--series-by-zone", required=True, help="JSON map from bidding zone to target auction-series key")
     parser.add_argument("--resolution-minutes", type=int, required=True)
     parser.add_argument("--experiment-path", required=True)
@@ -682,6 +703,20 @@ def main() -> None:
     parser.add_argument("--rolling-step-days", type=int, default=7)
     parser.add_argument("--rolling-training-window-days", type=int, default=0)
     args = parser.parse_args()
+    if args.environment:
+        from eu_electricity_forecast.catalog_policy import validate_source_catalog
+
+        if not args.output_catalog:
+            parser.error("--output-catalog is required when --environment is set")
+        table_parts = args.table.split(".")
+        if len(table_parts) != 3:
+            parser.error("--table must be an unquoted three-part name")
+        validate_source_catalog(
+            environment=args.environment,
+            output_catalog=args.output_catalog,
+            input_catalog=table_parts[0],
+            production_catalog=args.production_catalog,
+        )
     series_by_zone = json.loads(args.series_by_zone)
     if not isinstance(series_by_zone, dict):
         raise TypeError("--series-by-zone must be a JSON object, for example '{\"FR\":\"series-key\"}'.")

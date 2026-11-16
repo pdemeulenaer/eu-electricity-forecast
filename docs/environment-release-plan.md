@@ -1,23 +1,29 @@
 # Environment and release plan
 
 This plan covers catalog isolation, code delivery, and model registration. All
-items below are **planned**. Dev deployments remain manual; QA and production
-deliveries are automated.
+items below are **planned** unless marked otherwise. Dev deployments remain manual;
+QA and production deliveries are planned to be automated.
+
+Local groundwork: a GitHub Actions CI workflow runs unit checks and CodeQL;
+separate dev, QA, and prod bundle targets validate; Silver, Gold, and training
+check input catalog choices; and training runs log available code provenance tags.
+The jobs have not been run with these changes. QA and prod deployments define a
+serverless catalog-creation job using default storage, followed by bundle-managed
+schemas and the landing volume. Catalog permissions, service identities, release
+automomation, candidate registration, and promotion remain unimplemented.
 
 ## 1. Environments and data access
 
 | Environment | Proposed catalog | Read | Write | Runs |
 | --- | --- | --- | --- | --- |
-| Dev | `eu_electricity_forecast_dev` | Dev, or selected production data | Dev only | Developer's manual runs |
+| Dev | `eu_electricity_forecast` | Dev, or selected production data | Dev only | Developer's manual runs |
 | QA | `eu_electricity_forecast_qa` | QA, or selected production data | QA only | CI tests and stakeholder review |
 | Prod | `eu_electricity_forecast_prod` | Prod only | Prod only | Production jobs |
 
-Each catalog has `landing`, `bronze`, `silver`, and `gold` data schemas, plus
-`ml_models` for registered models. Names are
-proposals: the existing catalog is `eu_electricity_forecast`, currently shared
-by the dev and prod bundle targets. Choose whether to keep it as dev or migrate
-its data to the proposed dev catalog before changing existing jobs. Do not delete
-or rename its volume as part of a bundle change without a migration plan.
+Each target configures `landing`, `bronze`, `silver`, `gold`, and `ml_models`
+schemas. Dev retains its existing `eu_electricity_forecast` catalog and volume.
+QA and prod use separate catalog names in the local configuration; they have not
+been deployed. Provision their catalogs and storage before deployment.
 
 ~~~mermaid
 flowchart LR
@@ -28,15 +34,24 @@ flowchart LR
     PROD --> PJ[Prod jobs] --> PROD
 ~~~
 
-For each job, configure an **input catalog** and an **output catalog**. Dev and
+For data transformations and training, configure an **input catalog** and an
+**output catalog**. Dev and
 QA can select their own catalog or an allowed prod source; output remains fixed
 to their environment. Prod uses prod for both. Define inputs per stage: for
 example, a QA Silver transformation may read prod Bronze but writes QA Silver.
 An ingestion run that fetches ENTSO-E data writes to QA landing, not prod landing.
 
-Give each environment a separate job identity. Dev and QA identities receive
-write permissions only on their own catalog, and narrowly scoped read permissions
-on approved prod tables or volumes. Prod jobs write only to prod. Checkpoint and
+The bundle grants the developer read access to QA data and model objects for
+review. QA application jobs run as the QA service principal, and production jobs
+run as the prod service principal. Deploy QA and
+prod with profiles authenticated as those respective principals. The catalog
+provisioning notebook rejects a different deployment identity. Prod schema
+grants give dev and QA read access and prod write access. These grants alone do
+not prove isolation: the catalog creator owns it, and effective access can also
+come from ownership, administrative roles, or inherited grants. In particular,
+`pdemeulenaer@gmail.com` is a workspace admin and can change permissions. Test
+effective permissions with each actual identity; strict isolation requires a
+non-admin dev identity. Check ownership explicitly if a catalog already exists. Prod jobs write only to prod. Checkpoint and
 schema-tracking paths, landing files, quarantine, model output, and temporary
 objects must also use the output environment. Test denied writes to prod. Avoid
 concurrent dev jobs overwriting the same tables by isolating or coordinating
@@ -44,11 +59,19 @@ runs. Limit access to sensitive production data where applicable.
 
 Add `dev`, `qa`, and `prod` bundle targets with distinct deployment state and
 job names. Dev uses development mode; QA and prod use stable shared deployments
-and service identities. Keep QA schedules paused and start test runs explicitly.
-Provision catalogs, storage, schemas, grants, and service identities before the
-bundle runs. The workspace's managed storage setup may require creating catalogs
-in the UI or specifying a managed location. Validate the migration and bundle
-plan before deployment.
+and service identities. QA and prod ingestion schedules are paused in the bundle;
+start tests explicitly. Configure stable service identities before automation.
+QA and prod deployments use a serverless notebook to run `CREATE CATALOG IF NOT
+EXISTS` with workspace default storage, before the bundle creates schemas and the
+managed landing volume. The deploying principal needs `CREATE CATALOG`, and the
+workspace must support serverless default storage. Catalogs created by the notebook
+are not bundle-owned; schemas and volume are protected against destruction. Dev
+keeps its existing bundle-managed catalog. Review `databricks bundle plan` before
+deploying. Each deployment principal needs `CREATE CATALOG` on the metastore, workspace
+access, and permission to use serverless compute. The QA and prod job principals
+also need access to their deployed files, MLflow experiment path, and the `entsoe`
+secret scope. Check catalog ownership and effective grants before running jobs.
+[Databricks default storage](https://docs.databricks.com/aws/en/storage/default-storage)
 
 ## 2. Branches and delivery
 
@@ -194,12 +217,13 @@ lineage tags on the **production model version**, including the QA model name an
 version, original run ID, code version, commit, and artifact checksum. Do not
 assume tags are automatically copied. Record the production version and approval
 as well. This makes both model versions traceable to the same training run and
-code even when their registry version numbers differ. Tracking this metadata is
-planned; existing runs do not currently log the full set.
+code even when their registry version numbers differ. Training now logs package version and available build identifiers locally; the
+CI-to-job metadata handoff and registered-model tags remain planned. Existing
+runs do not contain the full set.
 
 ## Implementation order
 
-1. Inventory existing resources and data; decide catalog migration and grants.
+1. Provision the QA and prod catalogs, service identities, storage, and grants.
 2. Parameterize and test input/output catalogs and environment-specific paths.
 3. Add QA/prod bundle targets, identities, isolation checks, and manual QA runs.
 4. Add CI, branch protection, release QA, stakeholder gate, tagging, and prod deployment.

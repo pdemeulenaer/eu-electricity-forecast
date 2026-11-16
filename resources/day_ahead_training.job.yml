@@ -36,6 +36,12 @@ resources:
             package_name: eu_electricity_forecast
             entry_point: entsoe-train
             parameters:
+              - --environment
+              - ${bundle.target}
+              - --output-catalog
+              - ${var.project_catalog}
+              - --production-catalog
+              - ${var.production_catalog}
               - --table
               - "{{job.parameters.catalog}}.{{job.parameters.gold_schema}}.day_ahead_training_data"
               - --series-by-zone

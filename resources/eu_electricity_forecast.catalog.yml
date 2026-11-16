@@ -1,5 +1,11 @@
-resources:
-  catalogs:
-    electricity_forecast:
-      name: ${var.project_catalog}
-      comment: Catalog for the EU electricity forecasting project
+# Keep the existing dev catalog under the same bundle resource key.
+# QA and prod catalogs are created by the serverless provisioning job below.
+targets:
+  dev:
+    resources:
+      catalogs:
+        electricity_forecast:
+          name: ${var.project_catalog}
+          comment: Catalog for the EU electricity forecasting project
+          lifecycle:
+            prevent_destroy: true

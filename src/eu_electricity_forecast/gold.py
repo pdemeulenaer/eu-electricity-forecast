@@ -66,7 +66,7 @@ def _with_price_lag(features, history, lag_hours: int):
     )
 
 
-def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: str, config: dict) -> None:
+def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: str, config: dict, input_catalog: str | None = None) -> None:
     """Rebuild Gold training snapshots using current historical prices for lags.
 
     Historical target intervals are discovered from Silver day-ahead prices. The target
@@ -105,8 +105,8 @@ def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: s
     forecast = config["forecast"]
     issue_timezone = forecast["issue_timezone"]
     issue_time = forecast["issue_time_local"]
-    source_table = f"{catalog}.{silver_schema}.silver_prices"
-    current_table = f"{catalog}.{silver_schema}.silver_prices_current"
+    source_table = f"{input_catalog or catalog}.{silver_schema}.silver_prices"
+    current_table = f"{input_catalog or catalog}.{silver_schema}.silver_prices_current"
     target_table = f"{catalog}.{gold_schema}.day_ahead_features"
     zones = config["zones"]
     timezone_map = create_map(*chain.from_iterable((lit(zone), lit(spec["timezone"])) for zone, spec in zones.items()))
@@ -239,13 +239,13 @@ def build_day_ahead_features(*, catalog: str, silver_schema: str, gold_schema: s
     )
 
 
-def build_day_ahead_price_labels(*, catalog: str, silver_schema: str, gold_schema: str) -> None:
+def build_day_ahead_price_labels(*, catalog: str, silver_schema: str, gold_schema: str, input_catalog: str | None = None) -> None:
     """Rebuild one latest-known label per zone, delivery interval, and auction series."""
     from pyspark.sql import SparkSession
     from pyspark.sql.functions import col
 
     spark = SparkSession.builder.getOrCreate()
-    source = f"{catalog}.{silver_schema}.silver_prices_current"
+    source = f"{input_catalog or catalog}.{silver_schema}.silver_prices_current"
     target = f"{catalog}.{gold_schema}.day_ahead_price_labels"
     current_prices = spark.table(source).where(
         (col("data_item") == "day_ahead_prices") & (col("unit") == "EUR/MWh")
@@ -308,16 +308,29 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalog", required=True)
+    parser.add_argument("--environment", choices=("dev", "qa", "prod"))
+    parser.add_argument("--production-catalog", default="eu_electricity_forecast_prod")
+    parser.add_argument("--input-catalog", help="Read Silver from this catalog; outputs still use --catalog.")
     parser.add_argument("--silver-schema", required=True)
     parser.add_argument("--gold-schema", required=True)
     args = parser.parse_args()
+    if args.environment:
+        from eu_electricity_forecast.catalog_policy import validate_source_catalog
+
+        validate_source_catalog(
+            environment=args.environment,
+            output_catalog=args.catalog,
+            input_catalog=args.input_catalog or args.catalog,
+            production_catalog=args.production_catalog,
+        )
     build_day_ahead_features(
         catalog=args.catalog,
         silver_schema=args.silver_schema,
         gold_schema=args.gold_schema,
         config=load_config(),
+        input_catalog=args.input_catalog,
     )
-    build_day_ahead_price_labels(catalog=args.catalog, silver_schema=args.silver_schema, gold_schema=args.gold_schema)
+    build_day_ahead_price_labels(catalog=args.catalog, silver_schema=args.silver_schema, gold_schema=args.gold_schema, input_catalog=args.input_catalog)
     build_day_ahead_training_view(catalog=args.catalog, gold_schema=args.gold_schema)
 
 

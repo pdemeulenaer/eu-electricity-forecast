@@ -156,13 +156,13 @@ def _create_current_view(spark, catalog: str, schema: str, table: str) -> None:
     )
 
 
-def run_silver(*, catalog: str, bronze_schema: str, silver_schema: str) -> None:
+def run_silver(*, catalog: str, bronze_schema: str, silver_schema: str, input_catalog: str | None = None) -> None:
     """Idempotently type Bronze rows, preserve versions, quarantine invalid rows, and refresh views."""
     from pyspark.sql import SparkSession
     from pyspark.sql.functions import coalesce, col, concat_ws, lit, sha2
 
     spark = SparkSession.builder.getOrCreate()
-    bronze = _qualified(catalog, bronze_schema, "bronze_entsoe_observations")
+    bronze = _qualified(input_catalog or catalog, bronze_schema, "bronze_entsoe_observations")
     source = spark.table(bronze)
     classified = _classify_rows(_typed_observations(source))
     valid = classified.where(col("_invalid_reason") == "").drop("_invalid_reason")
@@ -199,10 +199,22 @@ def run_silver(*, catalog: str, bronze_schema: str, silver_schema: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalog", required=True)
+    parser.add_argument("--environment", choices=("dev", "qa", "prod"))
+    parser.add_argument("--production-catalog", default="eu_electricity_forecast_prod")
+    parser.add_argument("--input-catalog", help="Read Bronze from this catalog; outputs still use --catalog.")
     parser.add_argument("--bronze-schema", required=True)
     parser.add_argument("--silver-schema", required=True)
     args = parser.parse_args()
-    run_silver(catalog=args.catalog, bronze_schema=args.bronze_schema, silver_schema=args.silver_schema)
+    if args.environment:
+        from eu_electricity_forecast.catalog_policy import validate_source_catalog
+
+        validate_source_catalog(
+            environment=args.environment,
+            output_catalog=args.catalog,
+            input_catalog=args.input_catalog or args.catalog,
+            production_catalog=args.production_catalog,
+        )
+    run_silver(catalog=args.catalog, bronze_schema=args.bronze_schema, silver_schema=args.silver_schema, input_catalog=args.input_catalog)
 
 
 if __name__ == "__main__":

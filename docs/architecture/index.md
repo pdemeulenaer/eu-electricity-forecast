@@ -97,8 +97,8 @@ source files and Auto Loader state; Bronze observations go to
 training-view objects use their matching schemas.
 
 The hourly ingestion job rebuilds Gold features after Silver normalization.
-Dev and prod currently reference this same catalog. Separate environment catalogs
-and registered models in an `ml_models` schema are [planned](mlops.md#code-delivery-and-environments-planned);
+The local bundle now defines separate QA and prod catalogs and an `ml_models`
+schema; their deployment and registered models are [planned](mlops.md#code-delivery-and-environments-planned);
 the four-schema structure stays the same.
 
 See Databricks guidance on [medallion architecture](https://docs.databricks.com/gcp/en/lakehouse/medallion),

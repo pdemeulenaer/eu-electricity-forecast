@@ -29,7 +29,7 @@ and controlled retraining. Detailed layer responsibilities are in the
 | 4 | Bronze ingestion and Silver normalization | Running in the project catalog |
 | 5 | Gold historical features and labels | Feature set 2.0.0 rebuilt and checked in Databricks |
 | 6 | Baselines, global model, MLflow experiment | Prior rolling run predates the 168-hour baseline; redeploy and rerun to evaluate it |
-| 7 | Environment isolation and CI/CD | Planned; dev/prod currently share the project catalog |
+| 7 | Environment isolation and CI/CD | Targets configured locally; identities, grants, and CI/CD deployment pending |
 | 8 | Deployable candidate, registry, and promotion | Planned; rolling evaluation logs no deployable model |
 | 9 | Future features, inference, and delayed-label evaluation | Planned |
 | 10 | Data quality, drift, and performance monitoring | Planned |

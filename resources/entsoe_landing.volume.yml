@@ -1,7 +1,9 @@
 resources:
   volumes:
     entsoe_landing_project:
-      catalog_name: ${resources.catalogs.electricity_forecast.name}
+      catalog_name: ${var.project_catalog}
       schema_name: ${resources.schemas.landing.name}
       name: entsoe_landing
       volume_type: MANAGED
+      lifecycle:
+        prevent_destroy: true

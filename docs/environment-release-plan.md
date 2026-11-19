@@ -22,8 +22,8 @@ automomation, candidate registration, and promotion remain unimplemented.
 
 Each target configures `landing`, `bronze`, `silver`, `gold`, and `ml_models`
 schemas. Dev retains its existing `eu_electricity_forecast` catalog and volume.
-QA and prod use separate catalog names in the local configuration; they have not
-been deployed. Provision their catalogs and storage before deployment.
+QA and prod use separate catalogs. Create each catalog before its first bundle
+deployment.
 
 ~~~mermaid
 flowchart LR
@@ -59,19 +59,43 @@ runs. Limit access to sensitive production data where applicable.
 
 Add `dev`, `qa`, and `prod` bundle targets with distinct deployment state and
 job names. Dev uses development mode; QA and prod use stable shared deployments
-and service identities. QA and prod ingestion schedules are paused in the bundle;
-start tests explicitly. Configure stable service identities before automation.
-QA and prod deployments use a serverless notebook to run `CREATE CATALOG IF NOT
-EXISTS` with workspace default storage, before the bundle creates schemas and the
-managed landing volume. The deploying principal needs `CREATE CATALOG`, and the
-workspace must support serverless default storage. Catalogs created by the notebook
-are not bundle-owned; schemas and volume are protected against destruction. Dev
-keeps its existing bundle-managed catalog. Review `databricks bundle plan` before
-deploying. Each deployment principal needs `CREATE CATALOG` on the metastore, workspace
-access, and permission to use serverless compute. The QA and prod job principals
-also need access to their deployed files, MLflow experiment path, and the `entsoe`
-secret scope. Check catalog ownership and effective grants before running jobs.
-[Databricks default storage](https://docs.databricks.com/aws/en/storage/default-storage)
+and service identities. QA ingestion is paused; production ingestion runs hourly.
+Start QA tests explicitly. Configure stable service identities before automation.
+### Catalog setup and deployments
+
+Create the QA or prod catalog once before the first bundle deployment:
+
+~~~mermaid
+flowchart LR
+    A[Create catalog once] --> B[Deploy bundle]
+    B --> C[Schemas, volume and jobs]
+    C --> D[Run catalog grants job when needed]
+~~~
+
+1. In Catalog Explorer, create the environment catalog with **Default Storage**.
+   QA uses `eu_electricity_forecast_qa`; prod uses `eu_electricity_forecast_prod`.
+   Set the catalog owner to the corresponding QA or prod service principal. If an
+   administrator creates it, transfer ownership to that principal before deployment.
+   Check that the principal can use the workspace and serverless compute.
+2. Deploy with the corresponding service principal profile. The catalog must
+   already exist; the bundle creates and manages the schemas and landing volume.
+3. Run the catalog job once to grant access to the configured principals:
+
+    ```bash
+    databricks bundle run provision_catalog -t qa --profile qa
+    # For production:
+    databricks bundle run provision_catalog -t prod --profile prod
+    ```
+
+Later deployments do not run this job. Run it again when catalog access grants
+need to be applied. It adds `USE CATALOG`; it does not revoke old grants. Schema
+grants remain bundle-managed. Review ownership and effective permissions,
+including inherited access, separately.
+
+The QA and prod catalogs already exist. Before deploying the change that removes
+the automatic run, inspect `databricks bundle plan` and confirm no schema or
+volume is deleted or recreated. Catalogs created through default storage are not
+owned by the bundle. See [Databricks default storage](https://docs.databricks.com/aws/en/storage/default-storage).
 
 ## 2. Branches and delivery
 

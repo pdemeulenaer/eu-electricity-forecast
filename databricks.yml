@@ -128,7 +128,7 @@ targets:
           run_as:
             service_principal_name: ${var.prod_principal}
           trigger:
-            pause_status: PAUSED
+            pause_status: UNPAUSED
         entsoe_historical_backfill:
           run_as:
             service_principal_name: ${var.prod_principal}
